@@ -1,0 +1,1955 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CraqueView</title><meta name="description" content="Dashboard imersivo de estatísticas de jogadores do Brasileirão — HTML, CSS e JS puros.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* MAPA DO ARQUIVO — atualizar ao adicionar/remover seções grandes
+   10-763     CSS (tokens, fundo em vídeo, filtros/menu, métricas clicáveis, avatar/brasão, componentes)
+              ~417 componente CAMPO 3D · ~567 CARTA HOLOGRÁFICA · ~653 comparação + transições slide
+   765-895    HTML (vídeo, topbar + filtros + Comparar, sidebars, field = carta + ranking,
+              painel de comparação #compare, menu de clubes)
+   898-950    dados embutidos (PLAYERS) — não ler à toa, um registro por linha
+   953-fim    JS: 953 config · 1008 assets · 1047 métricas/filtros (state, METRICS, currentList)
+              1097 ranking · 1130 filtros/menu · 1174 ficha · 1255 perfil · 1339 tweenPoints
+              1360 campo 3D · 1464 pênaltis · 1699 carta holográfica · 1800 comparação · 1897 eventos
+   Assets: assets/ (background, jogadores, clubes) — caminhos relativos, sensíveis a maiúsculas no GitHub Pages
+*/
+
+/* ---------- Tokens ---------- */
+:root{
+  --bg:#08130d;
+  --glass:rgba(14,32,22,.42);
+  --glass-2:rgba(9,24,16,.55);
+  --stroke:rgba(255,255,255,.14);
+  --stroke-2:rgba(255,255,255,.08);
+  --ink:#ffffff;
+  --ink-60:rgba(255,255,255,.62);
+  --ink-40:rgba(255,255,255,.40);
+  --gold:#F5CE3B;
+  --gold-soft:#FFDE6B;
+  --green:#38D98A;
+  --red:#FF6B6B;
+  --blue:#4FA3FF;
+  --orange:#ffa24d;
+
+  --gold-10:rgba(245,206,59,.10);
+  --gold-18:rgba(245,206,59,.18);
+  --gold-40:rgba(245,206,59,.40);
+  --green-08:rgba(56,217,138,.08);
+  --green-14:rgba(56,217,138,.14);
+  --red-14:rgba(255,107,107,.14);
+  --orange-14:rgba(255,162,77,.14);
+  --white-02:rgba(255,255,255,.02);
+  --white-04:rgba(255,255,255,.04);
+  --heat-cold:#2f7fd6;            /* tom médio do gradiente auxiliar azul */
+  --holo-1:#3a2f0a;--holo-2:#1f3a2a;--holo-3:#46370c;--holo-4:#16303f;  /* faixas escuras do brilho holográfico (color-dodge) */
+  --holo-w:230px;
+  --cmp-card-w:260px;
+  --cmp-panel-w:430px;            /* painel de comparação: só a largura que o conteúdo pede */
+  --blue-18:rgba(79,163,255,.18);--blue-40:rgba(79,163,255,.40);
+  --rank-w:calc(380px * .6);      /* ranking 40% menor */
+  --shade-top:rgba(8,19,13,.12);--shade-bottom:rgba(8,19,13,.34);--shade-edge:rgba(8,19,13,.48);   /* véu mais leve: vídeo mais visível */
+  --glow-ink:0 0 18px rgba(245,206,59,.18),0 2px 10px rgba(0,0,0,.6);
+
+  --font:'Inter','Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  --display:'Sora',var(--font);
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+
+  --fs-display:38px;
+  --fs-title:24px;
+  --fs-body:13px;
+  --fs-label:10px;
+  --fs-brand:15px;
+
+  --space:15px;
+  --radius:20px;
+  --radius-ctl:13px;
+  --radius-sm:10px;
+  --radius-pill:999px;
+  --shadow:0 20px 50px -22px rgba(0,0,0,.75);
+  --blur:blur(20px) saturate(1.25);
+  --side:370px;
+}
+
+/* ---------- Base ---------- */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font);
+  font-size:var(--fs-body);
+  color:var(--ink);
+  background:var(--bg);
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+svg{display:block}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.label{font-size:var(--fs-label);text-transform:uppercase;letter-spacing:.12em;color:var(--ink-40);font-weight:600}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--stroke);border-radius:var(--radius-pill)}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- Layout ---------- */
+.app{
+  height:100vh;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+  gap:var(--space);
+  padding:var(--space);
+}
+.main{
+  position:relative;
+  display:grid;
+  grid-template-columns:var(--side) minmax(0,1fr) var(--side);
+  grid-template-areas:"left field right";
+  gap:var(--space);
+  min-height:0;
+}
+.side{display:flex;flex-direction:column;gap:var(--space);min-height:0;overflow-y:auto;padding-right:2px}
+.side-left{grid-area:left}
+.side-right{grid-area:right}
+/* centro: carta + ranking soltos sobre o fundo, centralizados juntos; só o ranking se ajusta */
+.field{grid-area:field;min-height:0;display:flex;align-items:center;justify-content:center;gap:calc(var(--space)*2)}
+
+/* ---------- Panel (componente base) ---------- */
+.panel{
+  background:var(--glass);
+  -webkit-backdrop-filter:var(--blur);
+  backdrop-filter:var(--blur);
+  border:1px solid var(--stroke);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:var(--space);
+}
+.card{display:flex;flex-direction:column;gap:var(--space);flex-shrink:0}
+.card-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px var(--space)}
+.card-title{font-size:var(--fs-title);font-weight:700;letter-spacing:-.01em;line-height:1.1;white-space:nowrap}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 10px;border-radius:var(--radius-pill);
+  font-size:var(--fs-label);font-weight:600;text-transform:uppercase;letter-spacing:.1em;
+  border:1px solid var(--stroke);color:var(--ink-60);background:var(--glass-2);white-space:nowrap;
+}
+.pill-green{color:var(--green);border-color:var(--green-14);background:var(--green-14)}
+.pill-red{color:var(--red);border-color:var(--red-14);background:var(--red-14)}
+.pill-orange{color:var(--orange);border-color:var(--orange-14);background:var(--orange-14)}
+.pill-gold{color:var(--gold);border-color:var(--gold-18);background:var(--gold-10)}
+.divider{height:1px;background:var(--stroke-2)}
+
+/* ---------- Topbar ---------- */
+.topbar{display:flex;align-items:center;gap:var(--space);padding:10px var(--space)}
+.brand{display:flex;align-items:center;gap:10px;flex-shrink:0;width:calc(var(--side) - var(--space) * 2)}
+.brand-mark{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,var(--gold-soft),var(--gold));
+  display:grid;place-items:center;box-shadow:0 8px 20px -8px var(--gold-40);
+}
+.brand-mark svg{width:20px;height:20px;stroke:var(--bg);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.brand-name{font-family:var(--display);font-size:var(--fs-brand);font-weight:700;letter-spacing:-.01em}
+.brand-name b{color:var(--gold)}
+.search{
+  flex:1;max-width:560px;height:40px;border-radius:var(--radius-ctl);
+  background:var(--glass-2);border:1px solid var(--stroke-2);
+  display:flex;align-items:center;gap:10px;padding:0 14px;transition:border-color .2s;
+}
+.search:focus-within{border-color:var(--gold-40)}
+.search svg{width:16px;height:16px;stroke:var(--ink-40);fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0}
+.search input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--ink);font:inherit;font-size:var(--fs-body)}
+.search input::placeholder{color:var(--ink-40)}
+.topbar-meta{margin-left:auto}
+.topbar{position:relative;z-index:20}
+.search{min-width:160px;max-width:420px}
+
+/* ---------- Filtros (chips cumulativos + menu de clubes) ---------- */
+.filters{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.seg{display:flex;gap:4px;padding:3px;border-radius:var(--radius-ctl);background:var(--glass-2);border:1px solid var(--stroke-2)}
+.chip{
+  height:32px;padding:0 12px;border-radius:10px;display:inline-flex;align-items:center;gap:6px;
+  font-size:var(--fs-body);font-weight:600;color:var(--ink-60);white-space:nowrap;
+  border:1px solid transparent;transition:background .15s,color .15s,border-color .15s;
+}
+.chip:hover{color:var(--ink);background:var(--white-04)}
+.chip.is-on{color:var(--bg);background:linear-gradient(135deg,var(--gold-soft),var(--gold))}
+.chip:focus-visible,.metric:focus-visible{outline:2px solid var(--gold-soft);outline-offset:2px}
+.chip-drop{height:40px;padding:0 12px;border-radius:var(--radius-ctl);background:var(--glass-2);border-color:var(--stroke-2)}
+.chip-drop.is-on{color:var(--bg)}
+.chip-drop svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.chip-drop[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.chip-ghost{color:var(--ink-40)}
+/* "Limpar" reserva o espaço mesmo oculto: aparecer não pode deslocar os chips sob o cursor */
+#filter-clear[hidden]{display:inline-flex;visibility:hidden}
+
+/* menu suspenso de clubes: vidro translúcido, acima de tudo (fixed no body), com scroll próprio */
+.club-menu{
+  position:fixed;left:var(--menu-x,0);top:var(--menu-y,0);z-index:100;width:280px;
+  display:flex;flex-direction:column;gap:8px;padding:12px;
+  background:rgba(9,24,16,.62);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid var(--stroke);border-radius:var(--radius-ctl);box-shadow:var(--shadow);
+  animation:menu-in .16s ease;
+}
+.club-menu[hidden]{display:none}
+@keyframes menu-in{from{opacity:0;transform:translateY(-4px)}}
+.club-menu-head{display:flex;align-items:center;justify-content:space-between}
+.club-list{max-height:min(380px, 60vh);overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:2px;padding-right:4px}
+.club-opt{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:10px;cursor:pointer;transition:background .15s}
+.club-opt:hover{background:var(--white-04)}
+.club-opt input{position:absolute;opacity:0;pointer-events:none}
+.club-check{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--ink-40);flex-shrink:0;display:grid;place-items:center;transition:all .15s}
+.club-opt input:checked + .club-check{background:var(--gold);border-color:var(--gold)}
+.club-opt input:checked + .club-check::after{content:"";width:8px;height:4px;border:2px solid var(--bg);border-top:0;border-right:0;transform:translateY(-1px) rotate(-45deg)}
+.club-opt input:focus-visible + .club-check{outline:2px solid var(--gold-soft);outline-offset:2px}
+.club-opt-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.club-opt-count{color:var(--ink-40);font-size:var(--fs-label)}
+
+/* ---------- Métricas clicáveis (reordenam o ranking) ---------- */
+.metric{cursor:pointer;transition:background .18s,box-shadow .18s,color .18s}
+.tile.metric:hover,.gauge.metric:hover,.rating-hero.metric:hover,.info-row.metric:hover{background:var(--gold-10);box-shadow:0 0 0 1px var(--gold-18),0 6px 18px -10px var(--gold-40)}
+.tile.metric.is-metric,.gauge.metric.is-metric,.info-row.metric.is-metric{background:var(--gold-10);box-shadow:0 0 0 1px var(--gold-40)}
+.rating-hero.metric.is-metric{box-shadow:0 0 0 1px var(--gold-40)}
+.info-row.metric{border-radius:var(--radius-sm);padding:4px 6px;margin:-4px -6px}
+.metric-inline{border-radius:6px;padding:1px 4px;margin:0 -2px}
+.metric-inline:hover{background:var(--gold-10);color:var(--gold-soft)}
+.metric-inline.is-metric{color:var(--gold);background:var(--gold-10)}
+.radar-hit{fill:transparent}
+.radar-axis:hover .radar-hit{fill:var(--gold-10)}
+.radar-axis:hover .radar-label,.radar-axis.is-metric .radar-label{fill:var(--gold-soft)}
+.radar-axis.is-metric .radar-value{fill:var(--gold)}
+.radar-axis:focus{outline:none}
+.radar-axis:focus-visible .radar-hit{stroke:var(--gold-soft);stroke-width:1.5}
+
+/* ---------- Fundo: vídeo do estádio em loop ---------- */
+/* cover mantém a proporção do vídeo (sem distorcer) e preenche a tela com gramado e arquibancadas */
+.bg-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 45%;z-index:-2;pointer-events:none}
+/* véu escuro por cima do vídeo para manter o contraste do texto e o "dark" do sistema */
+.bg-shade{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -8%, var(--gold-10), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 50%, transparent 40%, var(--shade-edge) 100%),
+    linear-gradient(180deg, var(--shade-top), var(--shade-bottom));
+}
+
+/* ---------- Avatar (componente reaproveitado, circular, com foto do jogador) ---------- */
+.avatar{
+  position:relative;overflow:hidden;border-radius:50%;
+  display:grid;place-items:center;flex-shrink:0;
+  background:linear-gradient(135deg,var(--c1,var(--glass-2)),var(--c2,var(--glass)));
+  border:1px solid var(--stroke);
+  font-family:var(--display);font-weight:700;color:var(--ink);
+  text-shadow:0 1px 3px rgba(0,0,0,.55);
+}
+.avatar-sm{width:34px;height:34px;font-size:var(--fs-label)}
+.avatar-md{width:56px;height:56px;font-size:var(--fs-body)}
+.avatar-lg{width:64px;height:64px;font-size:var(--fs-title)}
+.avatar-xl{width:76px;height:76px;font-size:var(--fs-title)}
+.avatar-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 20%}
+
+/* ---------- Brasão do clube (componente) ---------- */
+.crest{flex-shrink:0;object-fit:contain;filter:drop-shadow(0 0 1px var(--ink-60)) drop-shadow(0 4px 8px rgba(0,0,0,.45))}
+.crest-sm{width:22px;height:22px}
+.crest-md{width:40px;height:40px}
+.crest-fallback.crest-sm{width:22px;height:22px;font-size:var(--fs-label)}
+.crest-fallback.crest-md{width:40px;height:40px;font-size:var(--fs-label)}
+.club-line{display:inline-flex;align-items:center;gap:8px}
+
+/* ---------- Ranking (field) ---------- */
+/* 40% menor que a versão anterior (380px de largura × altura total do field) */
+.ranking{flex:0 0 var(--rank-w);width:var(--rank-w);height:60%;align-self:center;min-width:0;min-height:0;display:flex;flex-direction:column;gap:10px}
+.ranking .card-title{white-space:normal}
+.ranking .rank-row{gap:10px;padding:6px 8px}
+.podium .avatar-xl{width:46px;height:46px;font-size:var(--fs-body)}
+.podium .avatar-md{width:34px;height:34px;font-size:var(--fs-label)}
+.ranking .podium{gap:6px;padding:6px 0 0}
+.ranking .podium-name{font-size:var(--fs-label)}
+.ranking .podium-club{display:none}
+.ranking .podium-rating{font-size:var(--fs-body)}
+.ranking .p1 .podium-rating{font-size:var(--fs-title)}
+/* efeito "projetado": brilho no texto e a lista some suavemente nas bordas */
+.podium-name,.podium-rating,.podium-place{text-shadow:var(--glow-ink)}
+.ranking .rank-list{-webkit-mask-image:linear-gradient(180deg,transparent,#000 14px,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(180deg,transparent,#000 14px,#000 calc(100% - 40px),transparent);padding-top:6px;padding-bottom:30px}
+/* pódio solto: sem fundo, sem holofote e sem pedestais — a hierarquia vem só da altura e do tamanho */
+.podium{display:grid;grid-template-columns:1fr 1.15fr 1fr;align-items:end;gap:var(--space);padding:var(--space) var(--space) 0}
+.podium[hidden]{display:none}
+.podium-slot{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;border-radius:var(--radius-ctl);transition:transform .2s}
+.podium-slot:hover{transform:translateY(-3px)}
+.podium-slot .podium-name{font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.podium-slot .podium-club{color:var(--ink-60);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.podium-rating{font-size:var(--fs-title);font-weight:700;color:var(--ink)}
+.p1 .podium-rating{color:var(--gold)}
+.p1 .avatar{box-shadow:0 0 0 2px var(--gold),0 12px 30px -10px var(--gold-40)}
+.p1 .podium-name{font-size:var(--fs-body)}
+.crown{width:22px;height:22px;stroke:var(--gold);fill:var(--gold-18);stroke-width:1.6;stroke-linejoin:round}
+.podium-place{font-family:var(--display);font-size:var(--fs-body);font-weight:700;color:var(--ink-40)}
+.p1 .podium-place{color:var(--gold)}
+.p1{padding-bottom:30px}
+.p2{padding-bottom:14px}
+.podium-slot.is-active .avatar{outline:2px solid var(--gold-soft);outline-offset:3px}
+
+.list-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px}
+.rank-list{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px}
+.rank-row{
+  display:flex;align-items:center;gap:var(--space);
+  padding:8px 12px;border-radius:var(--radius-ctl);
+  border:1px solid transparent;background:var(--white-02);transition:background .15s,border-color .15s;
+}
+.rank-row:hover{background:var(--glass-2);border-color:var(--stroke-2)}
+.rank-row.is-active{border-color:var(--gold-40);background:var(--gold-10)}
+.rank-num{width:22px;color:var(--ink-40);font-weight:600}
+.rank-row.is-active .rank-num{color:var(--gold)}
+.row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.row-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-sub{color:var(--ink-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-metric{font-weight:700}
+.rank-row.is-active .row-metric{color:var(--gold)}
+.empty{color:var(--ink-40);text-align:center;padding:var(--space)}
+
+/* ---------- Ficha técnica ---------- */
+.bio-head{display:flex;align-items:center;gap:var(--space)}
+.bio-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.bio-name{font-size:var(--fs-title);font-weight:700;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bio-sub{color:var(--ink-60)}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{
+  background:var(--glass-2);border:1px solid var(--stroke-2);border-radius:var(--radius-ctl);
+  padding:10px 12px;display:flex;flex-direction:column;gap:4px;min-width:0;
+}
+.tile-value{font-size:var(--fs-body);font-weight:700}
+.tile-value small{font-size:var(--fs-label);color:var(--ink-40);font-weight:500;margin-left:2px}
+.info-row{display:flex;align-items:center;justify-content:space-between;gap:var(--space)}
+.info-row > div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.info-strong{font-weight:600}
+.market-top{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space)}
+.market-value{font-size:var(--fs-title);font-weight:700}
+.market-value small{font-size:var(--fs-body);color:var(--ink-60);font-weight:500}
+.delta{font-weight:600}
+.delta-up{color:var(--green)}
+.delta-down{color:var(--red)}
+.delta-flat{color:var(--ink-60)}
+.bio-phys{color:var(--ink-40)}
+.market{
+  display:flex;flex-direction:column;gap:10px;padding:var(--space);
+  border-radius:var(--radius-ctl);background:var(--glass-2);border:1px solid var(--gold-18);
+}
+/* gráfico de linha com eixos (componente reaproveitável) */
+.chart{width:100%;height:auto;overflow:visible}
+.chart-grid{stroke:var(--stroke-2);stroke-width:1}
+.chart-axis{stroke:var(--stroke);stroke-width:1}
+.chart-tick{fill:var(--ink-40);font-family:var(--mono);font-size:var(--fs-label)}
+.chart-title{fill:var(--ink-60);font-family:var(--display);font-size:var(--fs-label);text-transform:uppercase;letter-spacing:.12em}
+.chart-val{fill:var(--ink-60);font-family:var(--mono);font-size:var(--fs-label);font-weight:600}
+.chart-val.last{fill:var(--gold)}
+.chart-line{fill:none;stroke:var(--gold);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart-dot{fill:var(--bg);stroke:var(--gold);stroke-width:2}
+.chart-dot.last{fill:var(--gold)}
+.chart-stop-a{stop-color:var(--gold);stop-opacity:.26}
+.chart-stop-b{stop-color:var(--gold);stop-opacity:0}
+.market-foot{color:var(--ink-60)}
+
+/* radar de atributos */
+.radar{width:100%;height:auto}
+.radar-ring{fill:none;stroke:var(--stroke-2);stroke-width:1}
+.radar-ring.outer{stroke:var(--stroke)}
+.radar-spoke{stroke:var(--stroke-2);stroke-width:1}
+.radar-area{fill:var(--gold-18);stroke:var(--gold);stroke-width:2;stroke-linejoin:round}
+.radar-dot{fill:var(--gold);stroke:var(--bg);stroke-width:1.5}
+.radar-label{fill:var(--ink-60);font-family:var(--display);font-size:var(--fs-label);text-transform:uppercase;letter-spacing:.06em}
+.radar-value{fill:var(--ink);font-family:var(--mono);font-size:var(--fs-body);font-weight:700}
+.radar-note{color:var(--ink-40);text-align:center;font-size:var(--fs-label)}
+
+/* grupo de métricas + medidor de precisão */
+/* duas colunas compactas (chute | passe): totais, certos/no alvo e o medidor logo abaixo */
+.stat-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat-col{display:flex;flex-direction:column;gap:6px}
+.stat-col .tile{padding:7px 10px;flex-direction:row;align-items:baseline;justify-content:space-between}
+.gauge{
+  background:var(--glass-2);border:1px solid var(--stroke-2);border-radius:var(--radius-ctl);
+  padding:8px 10px;display:flex;flex-direction:column;align-items:center;gap:0;text-align:center;
+}
+.gauge svg{width:100%;max-width:92px;height:auto;margin-top:4px}
+.gauge-track{fill:none;stroke-width:10;stroke-opacity:.22}
+.gauge-arc{fill:none;stroke-width:10;stroke-linecap:round}
+.gauge-needle{stroke:var(--ink);stroke-width:2.5;stroke-linecap:round}
+.gauge-hub{fill:var(--ink)}
+.gauge-value{font-size:var(--fs-title);font-weight:700;line-height:1}
+.band-low{stroke:var(--red);color:var(--red)}
+.band-mid{stroke:var(--gold);color:var(--gold)}
+.band-high{stroke:var(--green);color:var(--green)}
+.gauge-note{color:var(--ink-40);font-size:var(--fs-label)}
+
+/* scroll interno dos cards da sidebar direita */
+.side-right{overflow:hidden}
+.side-right > .panel{flex:1 1 0;min-height:0}
+.card-body{flex:1;min-height:0;overflow-y:auto;padding-right:6px;margin-right:-6px}
+
+/* ---------- Perfil de desempenho ---------- */
+.rating-hero{
+  display:flex;align-items:center;gap:var(--space);
+  padding:var(--space);border-radius:var(--radius-ctl);
+  background:linear-gradient(135deg,var(--gold-10),transparent);border:1px solid var(--gold-18);
+}
+.rating-big{font-size:var(--fs-display);font-weight:700;color:var(--gold);line-height:1}
+.rating-meta{flex:1;display:flex;flex-direction:column;gap:6px}
+/* barra de progresso (componente reaproveitado: rating, precisões, terços) */
+.bar{width:100%;height:6px;border-radius:var(--radius-pill);overflow:hidden}
+.bar-track{fill:var(--white-04)}
+.bar-fill{fill:var(--gold)}
+.bar-green .bar-fill{fill:var(--green)}
+.bar-blue .bar-fill{fill:var(--blue)}
+.bar-thin{height:4px}
+.acc{display:flex;flex-direction:column;gap:8px}
+.acc-row{display:flex;justify-content:space-between;align-items:baseline}
+
+/* ---------- Mapa de presença (palco do campo 3D) ---------- */
+/* o palco mantém a mesma caixa do heatmap 2D anterior (105:68): o card não muda de tamanho */
+.heat-stage{width:100%;aspect-ratio:105/68;container-type:size;display:grid;place-items:center}
+.pitch-dir{display:flex;justify-content:space-between;color:var(--ink-40);font-size:var(--fs-label);text-transform:uppercase;letter-spacing:.12em}
+.heat-legend{display:flex;align-items:center;gap:10px;color:var(--ink-40);font-size:var(--fs-label);text-transform:uppercase;letter-spacing:.1em}
+.heat-scale{flex:1;height:6px;border-radius:var(--radius-pill);background:linear-gradient(90deg,var(--heat-cold),var(--green),var(--gold),var(--red))}
+.thirds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+
+/* ===========================================================================
+   CAMPO 3D — componente autocontido (origem: elementos/campo3d_card.html).
+   Bloco de terra flutuante com heatmap na superfície, 100% CSS.
+   --w é deduzido do palco (container query) para ocupar o espaço disponível.
+   As cores internas de solo/grama são do próprio componente (autocontido).
+   =========================================================================== */
+.campo3d{
+  --w:min(calc(100cqw / 1.81), calc(100cqh / 1.31));
+  --h:calc(var(--w)*1.545);
+  --m:calc(var(--w)*0.085);
+  --bw:calc(var(--w) + var(--m)*2);
+  --bh:calc(var(--h) + var(--m)*2);
+  --d:calc(var(--w)*0.0575);
+  --gol-esc:1.85;
+  --wgol:calc(var(--w)*0.108*var(--gol-esc));
+  --hgol:calc(var(--w)*0.036*var(--gol-esc));
+  --faixa:calc(var(--w)/8);
+  --rz:26deg;
+  --rx:58deg;
+  --lw:max(1px, calc(var(--w)*0.0085));
+  --linha:rgba(255,255,255,.66);
+  --borrao:calc(var(--w)*0.052);
+  position:relative;
+  width:calc(var(--bw)*cos(var(--rz)) + var(--bh)*sin(var(--rz)));
+  height:calc((var(--bw)*sin(var(--rz)) + var(--bh)*cos(var(--rz)))*cos(var(--rx))
+              + var(--d)*sin(var(--rx)) + var(--hgol)*sin(var(--rx)) + var(--w)*0.11);
+  perspective:calc(var(--w)*7); perspective-origin:50% 40%;
+}
+.c3-sombra{ position:absolute; left:50%; top:58%; width:76%; height:46%;
+  transform:translate(-50%,-50%); border-radius:50%; filter:blur(calc(var(--w)*0.06));
+  background:radial-gradient(ellipse at 50% 50%, rgba(0,0,0,.62), rgba(0,0,0,.30) 46%, transparent 72%); }
+.c3-flutua{ position:absolute; left:50%; top:50%; width:var(--bw); height:var(--bh);
+  transform-style:preserve-3d;
+  --sobe:calc(var(--d)*sin(var(--rx))*-0.5 - var(--w)*0.055);
+  transform:translate(-50%,-50%) translateY(var(--sobe));
+  animation:c3-bob 7.5s ease-in-out infinite; }
+@keyframes c3-bob{ 50%{ transform:translate(-50%,-50%) translateY(calc(var(--sobe) - 5px)) } }
+.c3-cena{ position:absolute; inset:0; transform-style:preserve-3d;
+  transform:rotateX(var(--rx)) rotateZ(calc(-1*var(--rz))); }
+.c3-topo{ position:absolute; inset:0; overflow:hidden; border-radius:calc(var(--w)*0.02);
+  background:
+    linear-gradient(115deg, rgba(255,255,255,.11), rgba(255,255,255,0) 42%, rgba(0,0,0,.24)),
+    repeating-linear-gradient(99deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.055) 1px 2.2px, transparent 2.2px 4.5px),
+    repeating-radial-gradient(circle at 30% 35%, rgba(255,255,255,.055) 0 1.1px, transparent 1.9px),
+    repeating-radial-gradient(circle at 68% 66%, rgba(0,0,0,.14) 0 1.2px, transparent 2.1px),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.20) 0 1px, transparent 1px var(--faixa)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.075) 0, rgba(255,255,255,0) calc(var(--faixa)*.55),
+      rgba(0,0,0,.10) var(--faixa), rgba(0,0,0,0) calc(var(--faixa)*1.55),
+      rgba(255,255,255,.075) calc(var(--faixa)*2)),
+    repeating-linear-gradient(90deg, #26603a 0 var(--faixa), #1f5330 var(--faixa) calc(var(--faixa)*2));
+  background-size:auto, auto, 9px 7px, 13px 11px, auto, auto, auto;
+  box-shadow:inset 0 0 calc(var(--w)*0.12) rgba(0,0,0,.35); }
+/* calor e brilho em SVG (atributos, sem estilo inline); o blur funde as células */
+.c3-pista{ position:absolute; inset:var(--m) }
+.c3-calor,.c3-brilho{ position:absolute; inset:0; width:100%; height:100% }
+.c3-calor{ filter:blur(var(--borrao)) }
+.c3-brilho{ mix-blend-mode:screen; filter:blur(calc(var(--w)*0.09)) }
+.c3-topo.trocando .c3-calor,.c3-topo.trocando .c3-brilho{ animation:c3-entra .45s ease both }
+@keyframes c3-entra{ from{ opacity:0 } to{ opacity:1 } }
+.c3-linhas{ position:absolute; inset:var(--m); overflow:hidden }
+.c3-linhas i{ position:absolute; border:var(--lw) solid var(--linha) }
+.c3-linhas .borda{ inset:0 }
+.c3-linhas .meio{ left:0; right:0; top:50%; border-width:var(--lw) 0 0 }
+.c3-linhas .circulo{ left:50%; top:50%; width:26.9%; aspect-ratio:1; border-radius:50%; transform:translate(-50%,-50%) }
+.c3-linhas .area{ left:20.35%; width:59.3%; height:15.7% }
+.c3-linhas .pequena{ left:36.55%; width:26.9%; height:5.24% }
+.c3-linhas .n{ top:0 } .c3-linhas .s{ bottom:0 }
+.c3-linhas .canto{ width:4%; aspect-ratio:1; border-radius:50% }
+.c3-linhas .canto.no{ left:-2%; top:-2%} .c3-linhas .canto.ne{ right:-2%; top:-2%}
+.c3-linhas .canto.so{ left:-2%; bottom:-2%} .c3-linhas .canto.se{ right:-2%; bottom:-2%}
+.c3-linhas .ponto{ width:1.7%; aspect-ratio:1; border:0; border-radius:50%; background:var(--linha); left:50%; transform:translate(-50%,-50%) }
+.c3-linhas .ponto.centro{ top:50% } .c3-linhas .ponto.pn{ top:10.5% } .c3-linhas .ponto.ps{ top:89.5% }
+.c3-gol{ position:absolute; left:calc(var(--m) + var(--w)*0.5 - var(--wgol)*0.5); width:var(--wgol);
+  height:var(--hgol); transform-origin:0 100%; transform:rotateX(-90deg);
+  border:var(--lw) solid rgba(255,255,255,.88); border-bottom:0;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.32) 0 .7px, transparent .7px 3.2px),
+    repeating-linear-gradient(0deg,  rgba(255,255,255,.24) 0 .7px, transparent .7px 3.2px),
+    rgba(255,255,255,.05); }
+.c3-gol.n{ top:calc(var(--m) - var(--hgol)) }
+.c3-gol.s{ top:calc(var(--m) + var(--h) - var(--hgol)) }
+.c3-sombra-gol{ position:absolute; left:calc(var(--m) + var(--w)*0.5 - var(--wgol)*0.5); width:var(--wgol);
+  height:calc(var(--hgol)*1.33); transform-origin:0 0; transform:skewX(34deg);
+  mix-blend-mode:multiply; filter:blur(.7px);
+  background:linear-gradient(180deg, rgba(0,0,0,.52), rgba(0,0,0,.44) 35%, rgba(0,0,0,.10)); }
+.c3-sombra-gol.n{ top:var(--m) }
+.c3-sombra-gol.s{ top:calc(var(--m) + var(--h)) }
+.c3-lado{ position:absolute; --ang:180deg; background:
+    repeating-radial-gradient(circle at 21% 34%, rgba(255,255,255,.09) 0 1px, transparent 1.7px),
+    repeating-radial-gradient(circle at 68% 71%, rgba(0,0,0,.34) 0 1.3px, transparent 2.2px),
+    linear-gradient(var(--ang),
+      #3f7f4b 0 1.6px, #2c5b35 1.6px 2.8px, #6d4c2c 2.8px 40%,
+      #57391f 40% 62%, #3d2716 62% 82%, #2a1a0e 82% 100%);
+  background-size:8px 7px, 11px 6px, auto; }
+.c3-lado.s{ left:0; top:100%; width:var(--bw); height:var(--d);
+  transform-origin:0 0; transform:rotateX(-90deg); filter:brightness(.78);
+  clip-path:polygon(0 0, 100% 0, 100% 78%, 96.5% 96%, 93% 70%, 89% 90%, 85.5% 66%, 82% 94%,
+    78% 74%, 74.5% 88%, 71% 64%, 67% 92%, 63.5% 72%, 60% 96%, 56% 68%, 52.5% 86%, 49% 62%,
+    45% 90%, 41.5% 74%, 38% 94%, 34% 66%, 30.5% 88%, 27% 70%, 23% 96%, 19.5% 72%, 16% 84%,
+    12% 64%, 8.5% 92%, 5% 70%, 0 86%); }
+.c3-lado.o{ left:0; top:0; width:var(--d); height:var(--bh); --ang:90deg;
+  transform-origin:0 0; transform:rotateY(90deg);
+  clip-path:polygon(0 0, 84% 0, 66% 3.5%, 92% 7%, 70% 10.5%, 96% 14%, 64% 17.5%, 88% 21%,
+    72% 24.5%, 94% 28%, 62% 31.5%, 90% 35%, 68% 38.5%, 86% 42%, 74% 45.5%, 98% 49%, 66% 52.5%,
+    92% 56%, 70% 59.5%, 84% 63%, 60% 66.5%, 94% 70%, 72% 73.5%, 88% 77%, 64% 80.5%, 96% 84%,
+    68% 87.5%, 90% 91%, 74% 94.5%, 86% 100%, 0 100%); }
+.c3-poeira{ position:absolute; inset:0; pointer-events:none }
+.c3-poeira i{ position:absolute; width:2px; height:2px; border-radius:50%; opacity:0;
+  background:#5d4127; animation:c3-cai 3.4s linear infinite }
+@keyframes c3-cai{
+  0%  { opacity:0;   transform:translate(0,-3px) scale(1) }
+  14% { opacity:.9 }
+  65% { opacity:.45 }
+  100%{ opacity:0;   transform:translate(3px,15px) scale(.55) }
+}
+.c3-poeira i:nth-child(1){ left:8%;  top:36%; animation-delay:-.2s; animation-duration:3.1s }
+.c3-poeira i:nth-child(2){ left:15%; top:49%; animation-delay:-1.7s; width:1.5px; height:1.5px }
+.c3-poeira i:nth-child(3){ left:23%; top:63%; animation-delay:-.9s; animation-duration:4.1s }
+.c3-poeira i:nth-child(4){ left:31%; top:78%; animation-delay:-2.6s; width:2.5px; height:2.5px }
+.c3-poeira i:nth-child(5){ left:42%; top:94%; animation-delay:-.5s; animation-duration:3.7s }
+.c3-poeira i:nth-child(6){ left:53%; top:90%; animation-delay:-2.1s; width:1.5px; height:1.5px }
+.c3-poeira i:nth-child(7){ left:64%; top:85%; animation-delay:-1.2s; animation-duration:4.4s }
+.c3-poeira i:nth-child(8){ left:76%; top:80%; animation-delay:-3.0s; width:2.5px; height:2.5px }
+.c3-poeira i:nth-child(9){ left:88%; top:76%; animation-delay:-1.5s; animation-duration:3.3s }
+@media (prefers-reduced-motion:reduce){ .c3-flutua{ animation:none } .c3-poeira{ display:none } }
+
+/* ---------- Pênaltis (goleira 3D em canvas + marcadores em SVG por cima) ---------- */
+/* mesma caixa da ilustração 2D anterior (320:150) */
+.goal-stage{position:relative;width:100%;aspect-ratio:320/150;border-radius:var(--radius-ctl);overflow:hidden}
+.goal-canvas{display:block;width:100%;height:100%}
+.goal-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.goal-overlay circle{pointer-events:auto}
+.goal-zone{fill:none;stroke:var(--ink-40);stroke-width:1;stroke-dasharray:3 4}
+.goal-zone-fill{fill:var(--gold)}
+.kick-goal{fill:var(--green);stroke:var(--bg);stroke-width:2}
+.kick-saved{fill:var(--red);stroke:var(--bg);stroke-width:2}
+.kick-saved-x{stroke:var(--bg);stroke-width:2;stroke-linecap:round}
+.kick-out{fill:var(--orange-14);stroke:var(--orange);stroke-width:2;stroke-dasharray:3 2}
+.pen-tiles .tile-value{font-size:var(--fs-title)}
+.tile-value.green{color:var(--green)}
+.tile-value.red{color:var(--red)}
+.tile-note{color:var(--ink-40);font-size:var(--fs-label)}
+.legend{display:flex;flex-wrap:wrap;gap:var(--space);color:var(--ink-60)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:50%}
+.dot-goal{background:var(--green)}
+.dot-saved{background:var(--red)}
+.dot-out{border:2px dashed var(--orange)}
+.pen-empty{color:var(--ink-40);text-align:center}
+
+/* ===========================================================================
+   CARTA HOLOGRÁFICA — origem: elementos/carta_holografica.html
+   Mecanismo 3D/luz adaptado de "Pokémon Cards CSS" (Simon Goellner, MIT).
+   Estrutura: .holo-slot (vertical swap) > .holo-float (flutua) > .holo-card (rotaciona).
+   Cor da carta = clube do jogador (--c1/--c2); filete = faixa de rating (tier).
+   =========================================================================== */
+.holo-stage{flex:0 0 var(--holo-w);width:var(--holo-w);perspective:600px;align-self:center}
+.holo-slot{will-change:transform}
+.holo-float{display:grid;transform-style:preserve-3d;will-change:transform}
+@media (prefers-reduced-motion:no-preference){ .holo-float{animation:holo-bob 5s ease-in-out infinite} }
+@keyframes holo-bob{0%,100%{transform:translate3d(0,0,.01px)}50%{transform:translate3d(0,-8px,.01px)}}
+.holo-float.interacting{animation-play-state:paused}
+.holo-card{
+  --pointer-x:50%;--pointer-y:50%;--pointer-from-center:0;--card-opacity:0;
+  --rotate-x:0deg;--rotate-y:0deg;--background-x:50%;--background-y:50%;
+  --cut:polygon(9% 0,100% 0,100% 92%,91% 100%,0 100%,0 8%);
+  position:relative;width:100%;aspect-ratio:300/430;border-radius:var(--radius);
+  clip-path:var(--cut);
+  background:
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--c1) 55%, transparent), transparent 70%),
+    linear-gradient(155deg, color-mix(in srgb, var(--c1) 38%, var(--bg)) 0%, color-mix(in srgb, var(--c2) 30%, var(--bg)) 55%, var(--bg) 100%);
+  box-shadow:0 30px 60px -24px rgba(0,0,0,.75);
+  transform-style:preserve-3d;
+  transform:rotateY(var(--rotate-x)) rotateX(var(--rotate-y));
+  will-change:transform;cursor:pointer;
+}
+.holo-card::before{
+  content:'';position:absolute;inset:0;clip-path:var(--cut);padding:1.5px;z-index:7;pointer-events:none;
+  background:var(--tier-edge);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+.tier-gold{--tier-edge:linear-gradient(155deg,var(--gold-soft),var(--gold) 40%,var(--gold-40) 70%,var(--gold) 100%);--tier-ink:var(--gold-soft)}
+.tier-green{--tier-edge:linear-gradient(155deg,var(--green),var(--green-14) 70%,var(--green) 100%);--tier-ink:var(--green)}
+.tier-silver{--tier-edge:linear-gradient(155deg,var(--ink),var(--ink-40) 70%,var(--ink-60) 100%);--tier-ink:var(--ink)}
+.holo-foil,.holo-shine,.holo-glare,.holo-edge{position:absolute;inset:0;clip-path:var(--cut);pointer-events:none}
+.holo-foil{
+  z-index:3;
+  background:repeating-linear-gradient(115deg, transparent 0 8%, var(--gold-18) 9% 11%, var(--green-14) 12% 14%, transparent 15% 24%);
+  background-size:220% 220%;
+  background-position:calc(((50% - var(--background-x)) * 2.6) + 50%) calc(((50% - var(--background-y)) * 3.5) + 50%);
+  opacity:calc(.5 + var(--pointer-from-center) * .5);
+  mix-blend-mode:soft-light;transform:translateZ(1px);
+}
+.holo-shine{
+  z-index:4;--scan:2px;
+  background-image:
+    repeating-linear-gradient(110deg, var(--holo-1), var(--holo-2), var(--holo-3), var(--holo-4), var(--holo-1), var(--holo-2), var(--holo-3), var(--holo-4), var(--holo-1)),
+    repeating-linear-gradient(90deg, #000 0, #000 calc(var(--scan)*2), #555 calc(var(--scan)*2), #555 calc(var(--scan)*4));
+  background-position:calc(((50% - var(--background-x)) * 3.2) + 50%) calc(((50% - var(--background-y)) * 4) + 50%), center center;
+  background-size:340% 340%, cover;background-blend-mode:overlay;
+  filter:brightness(.9) contrast(2.2) saturate(1.1);mix-blend-mode:color-dodge;
+  opacity:calc(var(--card-opacity) * .55);transform:translateZ(1.2px);
+}
+.holo-glare{
+  z-index:5;
+  background-image:radial-gradient(farthest-corner circle at var(--pointer-x) var(--pointer-y), rgba(255,255,255,.7) 10%, rgba(255,255,255,.5) 20%, rgba(0,0,0,.5) 90%);
+  opacity:var(--card-opacity);mix-blend-mode:overlay;transform:translateZ(1.41px);
+}
+.holo-edge{z-index:6;box-shadow:0 1px 0 var(--stroke) inset}
+.holo-inner{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;transform:translateZ(28px)}
+.holo-top{display:flex;justify-content:space-between;align-items:flex-start;padding:var(--space) var(--space) 0}
+.holo-ovr{display:flex;flex-direction:column;align-items:center;line-height:1;gap:4px}
+.holo-ovr b{font-family:var(--display);font-size:var(--fs-display);font-weight:700;color:var(--tier-ink);letter-spacing:-.02em}
+.holo-ovr span{font-size:var(--fs-label);font-weight:700;letter-spacing:.1em;color:var(--ink-60)}
+.holo-ovr i{font-style:normal;font-size:var(--fs-body)}
+.holo-portrait{position:relative;flex:1;display:grid;place-items:center;min-height:0}
+.holo-glow{position:absolute;width:70%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,var(--gold-40),transparent 70%);filter:blur(10px)}
+.holo-portrait .avatar{position:relative;width:46%;height:auto;aspect-ratio:1;font-size:var(--fs-display);border-color:var(--stroke)}
+/* foto recortada do jogador (card_*.png) no lugar do número; se falhar, o avatar reaparece */
+.holo-portrait{overflow:hidden}
+/* silhueta em destaque: maior que o retrato, sobe por trás do OVR/brasão (o recorte da carta limita) */
+.holo-portrait{overflow:visible}
+.holo-top{position:relative;z-index:2}
+.holo-name,.holo-stats{position:relative;z-index:2}
+.holo-photo{position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);height:150%;width:auto;max-width:none;object-fit:contain;filter:drop-shadow(0 12px 22px rgba(0,0,0,.6));z-index:1}
+.holo-glow{width:95%}
+.holo-portrait:has(.holo-photo) .avatar{display:none}
+.holo-name{text-align:center;padding:8px 10px 6px;background:linear-gradient(180deg,var(--gold-10),transparent);display:flex;flex-direction:column;gap:2px}
+.holo-name b{font-size:var(--fs-body);font-weight:800;letter-spacing:.06em;color:var(--tier-ink);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.holo-name span{font-size:var(--fs-label);color:var(--ink-40)}
+.holo-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 2px;padding:6px 10px var(--space)}
+.holo-stat{display:flex;flex-direction:column;align-items:center;gap:2px}
+.holo-stat b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:var(--fs-body);font-weight:700}
+.holo-stat span{font-size:var(--fs-label);letter-spacing:.08em;color:var(--ink-40);font-weight:700}
+
+/* ---------- Responsivo ---------- */
+/* ---------- Comparação ---------- */
+.compare-btn{color:var(--ink)}
+.compare-btn[aria-pressed="true"]{color:var(--bg);background:linear-gradient(135deg,var(--gold-soft),var(--gold));border-color:transparent}
+
+/* modo de escolha: o ranking pede o 2º jogador */
+.pick-hint{
+  padding:8px 10px;border-radius:var(--radius-sm);text-align:center;color:var(--ink);
+  background:var(--blue-18);border:1px solid var(--blue-40);animation:pick-pulse 1.6s ease-in-out infinite;
+}
+.pick-hint b{color:var(--blue)}
+.pick-hint[hidden]{display:none}
+@keyframes pick-pulse{50%{box-shadow:0 0 0 4px var(--blue-18)}}
+.is-picking .rank-row:hover,.is-picking .podium-slot:hover .avatar{border-color:var(--blue-40);box-shadow:0 0 0 2px var(--blue)}
+.is-picking .rank-row:hover{background:var(--blue-18)}
+.is-picking .rank-row.is-active,.is-picking .podium-slot.is-active{opacity:.4;cursor:not-allowed}
+
+/* modo comparação: os cards do dash somem, fica só o fundo; a topbar vira só o botão */
+/* TRANSIÇÕES EM SLIDE — nada aparece/some instantaneamente:
+   entrar: sidebars saem pelas laterais e o centro desce (0s) → carta A e painel entram (.3s) → carta B sobe (.55s)
+   sair:   carta A, painel e carta B saem (0s) → sidebars e centro voltam deslizando (.3s) */
+:root{--slide:.6s cubic-bezier(.7,0,.3,1)}
+.side-left,.side-right,.field{transition:transform var(--slide) .3s}
+.is-comparing .side-left,.is-comparing .side-right,.is-comparing .field{transition-delay:0s;pointer-events:none}
+.is-comparing .side-left{transform:translateX(calc(-100% - 80px))}
+.is-comparing .side-right{transform:translateX(calc(100% + 80px))}
+.is-comparing .field{transform:translateY(100vh)}
+.topbar > *,.topbar{transition:opacity .35s ease,visibility .35s,background .35s,border-color .35s,box-shadow .35s}
+.is-comparing .topbar{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.is-comparing .topbar > :not(.compare-btn){opacity:0;visibility:hidden;pointer-events:none}
+
+.compare{
+  position:absolute;inset:0;z-index:5;
+  display:grid;grid-template-columns:var(--cmp-card-w) var(--cmp-panel-w) var(--cmp-card-w);
+  justify-content:center;align-items:center;gap:calc(var(--space)*2);
+  visibility:hidden;pointer-events:none;transition:visibility 0s linear .65s;   /* some só depois de as peças saírem */
+}
+.is-comparing .compare{visibility:visible;pointer-events:auto;transition-delay:0s}
+.cmp-stage-a,.cmp-panel,.cmp-stage-b{transition:transform var(--slide) 0s}
+.cmp-stage-a{transform:translateX(-100vw)}
+.cmp-panel{transform:translateY(100vh)}
+.cmp-stage-b{transform:translateY(100vh)}
+.is-comparing .cmp-stage-a,.is-comparing .cmp-panel{transform:none;transition-delay:.3s}
+.is-comparing .cmp-stage-b{transform:none;transition-delay:.55s}   /* 2ª carta: slide up */
+@media (prefers-reduced-motion:reduce){
+  .side-left,.side-right,.field,.cmp-stage-a,.cmp-panel,.cmp-stage-b{transition-duration:0s;transition-delay:0s}
+}
+.cmp-stage{flex:none;width:var(--cmp-card-w);display:flex;flex-direction:column;align-items:center;gap:var(--space)}
+.cmp-stage .holo-slot{width:100%}
+.cmp-tag{font-size:var(--fs-label);font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:4px 10px;border-radius:var(--radius-pill)}
+.cmp-tag-a{color:var(--gold);background:var(--gold-10);border:1px solid var(--gold-18)}
+.cmp-tag-b{color:var(--blue);background:var(--blue-18);border:1px solid var(--blue-40)}
+.cmp-panel{max-height:100%;overflow-y:auto;display:flex;flex-direction:column;gap:var(--space)}
+.cmp-panel > *{flex-shrink:0}   /* o painel rola; nenhum bloco (radar incluso) pode ser esmagado */
+.cmp-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:var(--space)}
+.cmp-who{display:flex;align-items:center;gap:10px;min-width:0}
+.cmp-who div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cmp-who b{font-size:var(--fs-body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmp-who span{font-size:var(--fs-label);color:var(--ink-40)}
+.cmp-who-a b{color:var(--gold)}
+.cmp-who-b{justify-content:flex-end;text-align:right}
+.cmp-who-b b{color:var(--blue)}
+.cmp-vs{font-family:var(--display);font-size:var(--fs-title);font-weight:700;color:var(--ink-40)}
+.cmp-score{display:flex;align-items:center;justify-content:center;gap:var(--space)}
+.cmp-score-a,.cmp-score-b{font-size:var(--fs-title);font-weight:700}
+.cmp-score-a{color:var(--gold)} .cmp-score-b{color:var(--blue)}
+.cmp-radar{width:100%;max-height:300px;height:auto}
+.cmp-area-a{fill:var(--gold-18);stroke:var(--gold);stroke-width:2;stroke-linejoin:round}
+.cmp-area-b{fill:var(--blue-18);stroke:var(--blue);stroke-width:2;stroke-linejoin:round}
+.cmp-dot-a{fill:var(--gold);stroke:var(--bg);stroke-width:1.5}
+.cmp-dot-b{fill:var(--blue);stroke:var(--bg);stroke-width:1.5}
+.cmp-t-a{fill:var(--gold)} .cmp-t-b{fill:var(--blue)} .cmp-t-sep{fill:var(--ink-40)}
+.cmp-t-a:not(.win),.cmp-t-b:not(.win){fill-opacity:.55}
+.cmp-list{display:flex;flex-direction:column;gap:6px}
+.cmp-row{display:grid;grid-template-columns:90px 1fr 90px;align-items:center;gap:var(--space);padding:8px 12px;border-radius:var(--radius-ctl);background:var(--white-02);border:1px solid var(--stroke-2)}
+.cmp-mid{display:flex;flex-direction:column;align-items:center;gap:6px}
+.cmp-val{font-weight:700;color:var(--ink-60);display:flex;align-items:center;gap:6px}
+.cmp-val-a{justify-content:flex-start}
+.cmp-val-b{justify-content:flex-end}
+.cmp-val-a.win{color:var(--gold)}
+.cmp-val-b.win{color:var(--blue)}
+.cmp-up{font-style:normal;font-size:var(--fs-label)}
+.duel{width:100%;height:6px;border-radius:var(--radius-pill);overflow:hidden}
+.duel-track{fill:var(--white-04)}
+.duel-a{fill:var(--gold)}
+.duel-b{fill:var(--blue)}
+
+@media (max-width:1200px){
+  body{overflow-y:auto;overflow-x:hidden}   /* cards fora da tela durante o slide não criam scroll lateral */
+  .app{height:auto;min-height:100vh}
+  .main{grid-template-columns:1fr 1fr;grid-template-areas:"field field" "left right"}
+  .field{height:78vh}
+  .side,.side-right,.card-body{overflow:visible}
+  .side-right > .panel{flex:none}
+  /* comparação em telas estreitas: as duas cartas lado a lado, painel embaixo */
+  .compare{position:fixed;top:84px;bottom:var(--space);left:var(--space);right:var(--space);
+    grid-template-columns:repeat(2,minmax(0,var(--cmp-card-w)));align-content:start;align-items:start;overflow-y:auto}
+  .cmp-stage{width:100%;max-width:var(--cmp-card-w);justify-self:center}
+  .cmp-panel{grid-column:1/-1;order:3;max-height:none;overflow:visible;width:100%;max-width:calc(var(--cmp-card-w)*2 + var(--space)*2);justify-self:center}
+  .brand{width:auto}
+}
+@media (max-width:760px){
+  .main{grid-template-columns:minmax(0,1fr);grid-template-areas:"field" "right" "left"}
+  .topbar{flex-wrap:wrap}
+  .search{order:3;flex-basis:100%;max-width:none}
+  .podium{padding:var(--space) 0 0;gap:8px}
+  .avatar-xl{width:60px;height:60px}
+  .avatar-md{width:46px;height:46px}
+  .field{flex-direction:column;align-items:center;height:auto}
+  .ranking{max-width:none;width:100%;height:70vh}
+}
+</style>
+</head>
+<body>
+<video class="bg-video" src="assets/background/estadio.mp4" autoplay muted loop playsinline preload="auto" aria-hidden="true"></video>
+<div class="bg-shade" aria-hidden="true"></div>
+<div class="app">
+
+  <!-- Barra superior -->
+  <header class="topbar panel">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/><path d="M12 8.8v1.4M12 13.8v1.4M8.8 12h1.4M13.8 12h1.4"/></svg>
+      </div>
+      <span class="brand-name">Craque<b>View</b></span>
+    </div>
+    <label class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="search" type="search" placeholder="Buscar jogador, clube, posição…" autocomplete="off" aria-label="Buscar jogador, clube ou posição">
+    </label>
+    <div class="filters" role="group" aria-label="Filtros">
+      <div class="seg" role="group" aria-label="Filtrar por posição">
+        <button type="button" class="chip" data-pos-filter="ATA" aria-pressed="false">Ataque</button>
+        <button type="button" class="chip" data-pos-filter="MEI" aria-pressed="false">Meio-campo</button>
+        <button type="button" class="chip" data-pos-filter="DEF" aria-pressed="false">Defesa</button>
+        <button type="button" class="chip" data-pos-filter="GOL" aria-pressed="false">Goleiro</button>
+      </div>
+      <button type="button" class="chip chip-drop" id="club-btn" aria-haspopup="true" aria-expanded="false" aria-controls="club-menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/></svg>
+        <span id="club-btn-label">Clubes</span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <button type="button" class="chip chip-ghost" id="filter-clear" hidden>Limpar</button>
+    </div>
+    <button type="button" class="chip chip-drop compare-btn" id="compare-btn" aria-pressed="false" title="Comparar o jogador atual com outro">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h13M17 20l4-4-4-4M21 16H8"/></svg>
+      <span id="compare-btn-label">Comparar</span>
+    </button>
+  </header>
+
+  <main class="main">
+
+    <!-- Sidebar esquerda -->
+    <aside class="side side-left">
+      <section class="panel card" aria-labelledby="t-heat">
+        <div class="card-head">
+          <h2 class="card-title" id="t-heat">Mapa de Presença</h2>
+          <span class="pill" title="O dataset não traz coordenadas de posse; o mapa é estimado a partir da posição do jogador.">estimado</span>
+        </div>
+        <div class="card">
+          <div class="heat-stage"><div class="campo3d" id="campo3d" role="img"></div></div>
+          <div class="card" id="heat-info"></div>
+        </div>
+      </section>
+      <section class="panel card" aria-labelledby="t-pen">
+        <div class="card-head">
+          <h2 class="card-title" id="t-pen">Cobranças de Pênalti</h2>
+          <span class="pill" title="O dataset não traz cobranças de pênalti; os valores são simulados de forma consistente com os gols do jogador.">simulado</span>
+        </div>
+        <div class="card">
+          <div class="goal-stage">
+            <canvas class="goal-canvas" id="goal-canvas" aria-hidden="true"></canvas>
+            <svg class="goal-overlay" id="goal-overlay" role="img" aria-label="Posição das cobranças na goleira"></svg>
+          </div>
+          <div class="card" id="pen-info"></div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Centro: carta holográfica + ranking, soltos sobre o fundo (sem card) -->
+    <section class="field" aria-label="Ranking de jogadores">
+      <div class="holo-stage">
+        <div class="holo-slot" id="holo-slot">
+          <div class="holo-float">
+            <div class="holo-card" id="holo-card" role="img">
+              <div class="holo-foil"></div>
+              <div class="holo-shine"></div>
+              <div class="holo-glare"></div>
+              <div class="holo-inner" id="holo-inner"></div>
+              <div class="holo-edge"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ranking">
+        <p class="pick-hint" id="pick-hint" hidden>Escolha no ranking o jogador para comparar com <b id="pick-name"></b></p>
+        <div class="podium" id="podium"></div>
+        <div class="list-head">
+          <span class="label" id="list-label">Demais colocados</span>
+          <span class="label" id="metric-head">Rating</span>
+        </div>
+        <div class="rank-list" id="rank-list" role="list"></div>
+      </div>
+    </section>
+
+    <!-- Sidebar direita -->
+    <aside class="side side-right">
+      <section class="panel card" aria-labelledby="t-bio">
+        <div class="card-head"><h2 class="card-title" id="t-bio">Ficha técnica</h2></div>
+        <div id="bio" class="card-body"></div>
+      </section>
+      <section class="panel card" aria-labelledby="t-perf">
+        <div class="card-head"><h2 class="card-title" id="t-perf">Perfil de Desempenho</h2></div>
+        <div id="perf" class="card-body"></div>
+      </section>
+    </aside>
+
+    <!-- Painel de comparação: carta A · painel central · carta B (ocupa a área dos cards quando ativo) -->
+    <section class="compare" id="compare" aria-label="Comparação entre jogadores" aria-hidden="true">
+      <div class="holo-stage cmp-stage cmp-stage-a">
+        <div class="holo-slot" id="cmp-slot-a"><div class="holo-float">
+          <div class="holo-card" id="cmp-card-a" role="img"><div class="holo-foil"></div><div class="holo-shine"></div><div class="holo-glare"></div><div class="holo-inner"></div><div class="holo-edge"></div></div>
+        </div></div>
+        <span class="cmp-tag cmp-tag-a">Jogador atual</span>
+      </div>
+      <div class="panel cmp-panel" id="cmp-panel"></div>
+      <div class="holo-stage cmp-stage cmp-stage-b">
+        <div class="holo-slot" id="cmp-slot-b"><div class="holo-float">
+          <div class="holo-card" id="cmp-card-b" role="img"><div class="holo-foil"></div><div class="holo-shine"></div><div class="holo-glare"></div><div class="holo-inner"></div><div class="holo-edge"></div></div>
+        </div></div>
+        <span class="cmp-tag cmp-tag-b">Comparativo</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- menu de clubes: fora da topbar (position:fixed) para ficar acima de todos os painéis -->
+<div class="club-menu" id="club-menu" role="dialog" aria-label="Filtrar por clube" hidden>
+  <div class="club-menu-head">
+    <span class="label">Clubes · seleção múltipla</span>
+    <button type="button" class="chip chip-ghost" id="club-clear">Limpar</button>
+  </div>
+  <div class="club-list" id="club-list"></div>
+</div>
+
+<script>
+/* ========== DADOS EMBUTIDOS (gerados de dados/*.csv) — um registro por linha ========== */
+const PLAYERS = [
+{id:1001,name:"Gabriel Silva",age:28,nat:"Brasil",pos:"CB",club:"Flamengo",contract:"2027-12",h:189,w:86,apps:22,min:1980,g:2,a:0,sh:45,sot:12,shAcc:26.7,pc:1450,pt:1680,pAcc:86.3,tk:85,cl:156,rating:7.8,mv:45.5,mvh:[["2024-08",64.5],["2025-02",54.8],["2025-08",46.6],["2026-02",39.6],["2026-05",42.8],["2026-08",45.5]]},
+{id:1002,name:"Vinícius Luiz",age:31,nat:"Brasil",pos:"RB",club:"Flamengo",contract:"2026-06",h:181,w:79,apps:20,min:1800,g:1,a:3,sh:32,sot:8,shAcc:25.0,pc:980,pt:1120,pAcc:87.5,tk:62,cl:89,rating:7.6,mv:28.0,mvh:[["2024-08",48.9],["2025-02",39.8],["2025-08",32.5],["2026-02",26.6],["2026-05",27.5],["2026-08",28.0]]},
+{id:1003,name:"Thiago Heleno",age:29,nat:"Brasil",pos:"CB",club:"Atlético Paranaense",contract:"2027-12",h:191,w:87,apps:21,min:1890,g:1,a:0,sh:28,sot:5,shAcc:17.9,pc:1320,pt:1520,pAcc:86.8,tk:79,cl:142,rating:7.9,mv:38.2,mvh:[["2024-08",64.3],["2025-02",50.2],["2025-08",39.4],["2026-02",39.4],["2026-05",39.0],["2026-08",38.2]]},
+{id:1004,name:"Felipe Melo",age:36,nat:"Brasil",pos:"CM",club:"Fluminense",contract:"2026-12",h:184,w:82,apps:19,min:1520,g:0,a:2,sh:18,sot:3,shAcc:16.7,pc:1100,pt:1280,pAcc:85.9,tk:68,cl:45,rating:7.4,mv:12.5,mvh:[["2024-08",25.7],["2025-02",19.3],["2025-08",14.6],["2026-02",14.0],["2026-05",13.3],["2026-08",12.5]]},
+{id:1005,name:"Arrascaeta",age:29,nat:"Uruguai",pos:"CM",club:"Flamengo",contract:"2027-06",h:178,w:72,apps:22,min:1870,g:4,a:6,sh:48,sot:18,shAcc:37.5,pc:1380,pt:1540,pAcc:89.6,tk:34,cl:12,rating:8.1,mv:52.0,mvh:[["2024-08",80.9],["2025-02",58.4],["2025-08",53.8],["2026-02",49.3],["2026-05",45.0],["2026-08",52.0]]},
+{id:1006,name:"Pedro Rocha",age:26,nat:"Brasil",pos:"FW",club:"Botafogo",contract:"2027-12",h:183,w:78,apps:21,min:1650,g:12,a:4,sh:64,sot:28,shAcc:43.8,pc:320,pt:450,pAcc:71.1,tk:8,cl:8,rating:8.4,mv:58.0,mvh:[["2024-08",87.1],["2025-02",77.0],["2025-08",67.9],["2026-02",59.8],["2026-05",52.5],["2026-08",58.0]]},
+{id:1007,name:"Júnior Santos",age:25,nat:"Brasil",pos:"FW",club:"Botafogo",contract:"2027-12",h:182,w:75,apps:20,min:1540,g:10,a:3,sh:56,sot:25,shAcc:44.6,pc:280,pt:420,pAcc:66.7,tk:5,cl:6,rating:8.2,mv:48.0,mvh:[["2024-08",69.9],["2025-02",59.1],["2025-08",50.0],["2026-02",42.3],["2026-05",45.4],["2026-08",48.0]]},
+{id:1008,name:"Savinho",age:24,nat:"Brasil",pos:"RW",club:"Cruzeiro",contract:"2027-12",h:175,w:68,apps:23,min:1920,g:8,a:6,sh:52,sot:22,shAcc:42.3,pc:980,pt:1120,pAcc:87.5,tk:15,cl:5,rating:8.3,mv:72.0,mvh:[["2024-08",128.6],["2025-02",104.1],["2025-08",84.6],["2026-02",69.0],["2026-05",70.9],["2026-08",72.0]]},
+{id:1009,name:"Neymar Jr",age:32,nat:"Brasil",pos:"LW",club:"Santos",contract:"2026-06",h:175,w:68,apps:8,min:520,g:2,a:1,sh:28,sot:10,shAcc:35.7,pc:180,pt:240,pAcc:75.0,tk:3,cl:2,rating:7.7,mv:85.0,mvh:[["2024-08",146.5],["2025-02",113.8],["2025-08",89.0],["2026-02",88.5],["2026-05",87.1],["2026-08",85.0]]},
+{id:1010,name:"Rodrygo",age:23,nat:"Brasil",pos:"RW",club:"Real Madrid",contract:"2028-06",h:180,w:75,apps:5,min:180,g:1,a:0,sh:12,sot:5,shAcc:41.7,pc:65,pt:85,pAcc:76.5,tk:1,cl:1,rating:7.5,mv:95.0,mvh:[["2024-08",200.2],["2025-02",149.5],["2025-08",112.6],["2026-02",107.1],["2026-05",101.2],["2026-08",95.0]]},
+{id:1011,name:"Marilson",age:27,nat:"Brasil",pos:"LB",club:"São Paulo",contract:"2027-12",h:180,w:76,apps:20,min:1800,g:0,a:2,sh:24,sot:6,shAcc:25.0,pc:1050,pt:1210,pAcc:86.8,tk:71,cl:67,rating:7.7,mv:35.0,mvh:[["2024-08",55.7],["2025-02",40.0],["2025-08",36.7],["2026-02",33.5],["2026-05",30.4],["2026-08",35.0]]},
+{id:1012,name:"Wendel",age:23,nat:"Brasil",pos:"CM",club:"Zenit",contract:"2027-12",h:183,w:78,apps:14,min:980,g:2,a:1,sh:32,sot:8,shAcc:25.0,pc:680,pt:780,pAcc:87.2,tk:28,cl:8,rating:7.8,mv:75.0,mvh:[["2024-08",115.3],["2025-02",101.4],["2025-08",89.0],["2026-02",78.0],["2026-05",68.2],["2026-08",75.0]]},
+{id:1013,name:"Igor Gomes",age:24,nat:"Brasil",pos:"CM",club:"Corinthians",contract:"2027-12",h:178,w:71,apps:22,min:1760,g:3,a:4,sh:38,sot:12,shAcc:31.6,pc:1220,pt:1380,pAcc:88.4,tk:42,cl:15,rating:8.0,mv:42.0,mvh:[["2024-08",62.5],["2025-02",52.6],["2025-08",44.3],["2026-02",37.3],["2026-05",39.9],["2026-08",42.0]]},
+{id:1014,name:"Yuri Alberto",age:22,nat:"Brasil",pos:"FW",club:"Corinthians",contract:"2027-06",h:183,w:76,apps:19,min:1420,g:9,a:2,sh:48,sot:21,shAcc:43.8,pc:250,pt:380,pAcc:65.8,tk:4,cl:7,rating:8.1,mv:55.0,mvh:[["2024-08",100.5],["2025-02",81.0],["2025-08",65.5],["2026-02",53.2],["2026-05",54.4],["2026-08",55.0]]},
+{id:1015,name:"Gustavo Scarpa",age:28,nat:"Brasil",pos:"CM",club:"Palmeiras",contract:"2027-12",h:180,w:74,apps:21,min:1820,g:5,a:5,sh:42,sot:15,shAcc:35.7,pc:1380,pt:1540,pAcc:89.6,tk:25,cl:10,rating:8.2,mv:60.0,mvh:[["2024-08",106.0],["2025-02",82.0],["2025-08",63.8],["2026-02",63.1],["2026-05",61.8],["2026-08",60.0]]},
+{id:1016,name:"Raphael Veiga",age:27,nat:"Brasil",pos:"CM",club:"Palmeiras",contract:"2027-12",h:178,w:72,apps:23,min:1950,g:4,a:7,sh:38,sot:14,shAcc:36.8,pc:1420,pt:1580,pAcc:89.9,tk:28,cl:12,rating:8.3,mv:58.0,mvh:[["2024-08",98.1],["2025-02",72.9],["2025-08",69.6],["2026-02",65.9],["2026-05",62.0],["2026-08",58.0]]},
+{id:1017,name:"Dudu",age:32,nat:"Brasil",pos:"RW",club:"Palmeiras",contract:"2027-12",h:177,w:70,apps:20,min:1680,g:6,a:5,sh:44,sot:18,shAcc:40.9,pc:920,pt:1080,pAcc:85.2,tk:12,cl:8,rating:8.0,mv:42.0,mvh:[["2024-08",68.5],["2025-02",49.0],["2025-08",44.7],["2026-02",40.6],["2026-05",36.7],["2026-08",42.0]]},
+{id:1018,name:"Richard Ríos",age:22,nat:"Colômbia",pos:"CM",club:"Palmeiras",contract:"2027-12",h:181,w:73,apps:15,min:1080,g:1,a:2,sh:22,sot:6,shAcc:27.3,pc:750,pt:860,pAcc:87.2,tk:32,cl:12,rating:7.9,mv:68.0,mvh:[["2024-08",107.2],["2025-02",93.8],["2025-08",81.9],["2026-02",71.4],["2026-05",62.2],["2026-08",68.0]]},
+{id:1019,name:"Vinicius Junior",age:24,nat:"Brasil",pos:"LW",club:"Real Madrid",contract:"2028-06",h:180,w:73,apps:18,min:1440,g:12,a:5,sh:56,sot:28,shAcc:50.0,pc:620,pt:800,pAcc:77.5,tk:18,cl:5,rating:8.5,mv:165.0,mvh:[["2024-08",252.0],["2025-02",210.9],["2025-08",176.7],["2026-02",148.2],["2026-05",157.5],["2026-08",165.0]]},
+{id:1020,name:"Alisson",age:31,nat:"Brasil",pos:"CB",club:"Liverpool",contract:"2027-12",h:188,w:88,apps:22,min:1980,g:1,a:0,sh:34,sot:8,shAcc:23.5,pc:1680,pt:1920,pAcc:87.5,tk:92,cl:168,rating:8.0,mv:38.0,mvh:[["2024-08",71.2],["2025-02",57.1],["2025-08",46.0],["2026-02",37.2],["2026-05",37.8],["2026-08",38.0]]},
+{id:1021,name:"Militão",age:25,nat:"Brasil",pos:"CB",club:"Real Madrid",contract:"2028-12",h:188,w:85,apps:20,min:1800,g:0,a:1,sh:28,sot:6,shAcc:21.4,pc:1420,pt:1620,pAcc:87.7,tk:84,cl:145,rating:8.1,mv:85.0,mvh:[["2024-08",153.7],["2025-02",118.3],["2025-08",91.7],["2026-02",90.2],["2026-05",87.9],["2026-08",85.0]]},
+{id:1022,name:"Marquinhos",age:29,nat:"Brasil",pos:"CB",club:"Paris SG",contract:"2027-12",h:187,w:84,apps:19,min:1710,g:1,a:0,sh:25,sot:5,shAcc:20.0,pc:1380,pt:1560,pAcc:88.5,tk:76,cl:128,rating:8.2,mv:62.0,mvh:[["2024-08",107.7],["2025-02",79.7],["2025-08",75.6],["2026-02",71.2],["2026-05",66.6],["2026-08",62.0]]},
+{id:1023,name:"Thiago Silva",age:39,nat:"Brasil",pos:"CB",club:"Fluminense",contract:"2026-12",h:183,w:80,apps:18,min:1620,g:0,a:1,sh:20,sot:3,shAcc:15.0,pc:1280,pt:1460,pAcc:87.7,tk:68,cl:118,rating:7.8,mv:8.0,mvh:[["2024-08",13.3],["2025-02",9.5],["2025-08",8.6],["2026-02",7.8],["2026-05",7.0],["2026-08",8.0]]},
+{id:1024,name:"Casemiro",age:32,nat:"Brasil",pos:"CM",club:"Manchester Utd",contract:"2027-12",h:184,w:82,apps:21,min:1680,g:2,a:0,sh:32,sot:8,shAcc:25.0,pc:1220,pt:1380,pAcc:88.4,tk:64,cl:18,rating:7.9,mv:48.0,mvh:[["2024-08",77.4],["2025-02",67.4],["2025-08",58.6],["2026-02",50.9],["2026-05",44.1],["2026-08",48.0]]},
+{id:1025,name:"Paquetá",age:26,nat:"Brasil",pos:"CM",club:"West Ham",contract:"2028-12",h:181,w:76,apps:22,min:1760,g:3,a:4,sh:38,sot:12,shAcc:31.6,pc:1340,pt:1520,pAcc:88.2,tk:35,cl:12,rating:8.1,mv:72.0,mvh:[["2024-08",112.8],["2025-02",93.9],["2025-08",78.3],["2026-02",65.4],["2026-05",69.1],["2026-08",72.0]]},
+{id:1026,name:"Richarlison",age:26,nat:"Brasil",pos:"FW",club:"Tottenham",contract:"2027-12",h:183,w:78,apps:18,min:1320,g:6,a:3,sh:44,sot:18,shAcc:40.9,pc:380,pt:520,pAcc:73.1,tk:6,cl:5,rating:8.0,mv:68.0,mvh:[["2024-08",102.4],["2025-02",81.7],["2025-08",65.5],["2026-02",67.1],["2026-05",67.9],["2026-08",68.0]]},
+{id:1027,name:"Felipe Anderson",age:31,nat:"Brasil",pos:"LW",club:"Lazio",contract:"2026-12",h:180,w:74,apps:15,min:1020,g:4,a:2,sh:28,sot:10,shAcc:35.7,pc:580,pt:680,pAcc:85.3,tk:8,cl:4,rating:7.7,mv:22.0,mvh:[["2024-08",40.7],["2025-02",31.2],["2025-08",24.1],["2026-02",23.6],["2026-05",22.9],["2026-08",22.0]]},
+{id:1028,name:"Éverton Ribeiro",age:36,nat:"Brasil",pos:"CM",club:"Bahia",contract:"2026-12",h:178,w:71,apps:16,min:1200,g:1,a:2,sh:18,sot:4,shAcc:22.2,pc:980,pt:1120,pAcc:87.5,tk:22,cl:6,rating:7.4,mv:6.5,mvh:[["2024-08",11.5],["2025-02",8.5],["2025-08",8.0],["2026-02",7.5],["2026-05",7.0],["2026-08",6.5]]},
+{id:1029,name:"Guilherme Arana",age:26,nat:"Brasil",pos:"LB",club:"Atlético Mineiro",contract:"2027-12",h:181,w:74,apps:21,min:1890,g:1,a:1,sh:22,sot:6,shAcc:27.3,pc:1120,pt:1280,pAcc:87.5,tk:65,cl:58,rating:7.8,mv:48.0,mvh:[["2024-08",82.2],["2025-02",58.3],["2025-08",52.6],["2026-02",47.3],["2026-05",42.4],["2026-08",48.0]]},
+{id:1030,name:"Guga",age:25,nat:"Brasil",pos:"RB",club:"Atlético Mineiro",contract:"2027-12",h:182,w:76,apps:20,min:1800,g:0,a:2,sh:18,sot:4,shAcc:22.2,pc:1050,pt:1200,pAcc:87.5,tk:72,cl:64,rating:7.7,mv:42.0,mvh:[["2024-08",69.4],["2025-02",60.1],["2025-08",52.0],["2026-02",44.9],["2026-05",38.8],["2026-08",42.0]]},
+{id:1031,name:"Hulk",age:37,nat:"Brasil",pos:"FW",club:"Atlético Mineiro",contract:"2027-06",h:188,w:88,apps:18,min:1440,g:8,a:2,sh:54,sot:24,shAcc:44.4,pc:420,pt:580,pAcc:72.4,tk:8,cl:6,rating:7.8,mv:15.0,mvh:[["2024-08",24.1],["2025-02",20.0],["2025-08",16.6],["2026-02",13.8],["2026-05",14.5],["2026-08",15.0]]},
+{id:1032,name:"Igor",age:23,nat:"Brasil",pos:"CB",club:"Atlético Mineiro",contract:"2027-12",h:189,w:86,apps:22,min:1980,g:0,a:0,sh:32,sot:6,shAcc:18.8,pc:1520,pt:1720,pAcc:88.4,tk:88,cl:156,rating:7.9,mv:52.0,mvh:[["2024-08",80.5],["2025-02",63.9],["2025-08",51.0],["2026-02",51.9],["2026-05",52.2],["2026-08",52.0]]},
+{id:1033,name:"Alan Franco",age:26,nat:"Equador",pos:"CM",club:"Atlético Mineiro",contract:"2027-12",h:178,w:70,apps:21,min:1890,g:1,a:1,sh:28,sot:6,shAcc:21.4,pc:1380,pt:1560,pAcc:88.5,tk:45,cl:14,rating:8.0,mv:38.0,mvh:[["2024-08",72.0],["2025-02",54.9],["2025-08",42.2],["2026-02",41.1],["2026-05",39.7],["2026-08",38.0]]},
+{id:1034,name:"Éverson",age:29,nat:"Brasil",pos:"GK",club:"Atlético Mineiro",contract:"2027-12",h:188,w:82,apps:22,min:1980,g:0,a:0,sh:0,sot:0,shAcc:0.0,pc:450,pt:520,pAcc:86.5,tk:0,cl:12,rating:8.1,mv:42.0,mvh:[["2024-08",76.4],["2025-02",56.0],["2025-08",52.6],["2026-02",49.1],["2026-05",45.5],["2026-08",42.0]]},
+{id:1035,name:"Gonzalo Plata",age:24,nat:"Equador",pos:"RW",club:"Real Valladolid",contract:"2026-12",h:175,w:68,apps:12,min:840,g:3,a:2,sh:28,sot:12,shAcc:42.9,pc:420,pt:520,pAcc:80.8,tk:6,cl:3,rating:7.8,mv:35.0,mvh:[["2024-08",61.5],["2025-02",43.4],["2025-08",39.0],["2026-02",34.9],["2026-05",31.1],["2026-08",35.0]]},
+{id:1036,name:"Diego Costa",age:36,nat:"Espanha",pos:"FW",club:"Grêmio",contract:"2026-12",h:184,w:85,apps:8,min:480,g:3,a:0,sh:24,sot:12,shAcc:50.0,pc:180,pt:280,pAcc:64.3,tk:2,cl:4,rating:7.6,mv:8.0,mvh:[["2024-08",13.5],["2025-02",11.6],["2025-08",10.0],["2026-02",8.6],["2026-05",7.4],["2026-08",8.0]]},
+{id:1037,name:"Campaz",age:27,nat:"Colômbia",pos:"LW",club:"Grêmio",contract:"2027-12",h:177,w:70,apps:19,min:1480,g:5,a:3,sh:38,sot:16,shAcc:42.1,pc:720,pt:850,pAcc:84.7,tk:12,cl:6,rating:8.0,mv:48.0,mvh:[["2024-08",79.0],["2025-02",65.1],["2025-08",53.8],["2026-02",44.5],["2026-05",46.5],["2026-08",48.0]]},
+{id:1038,name:"Soteldo",age:25,nat:"Venezuela",pos:"RW",club:"Grêmio",contract:"2027-06",h:170,w:66,apps:14,min:1050,g:4,a:2,sh:32,sot:14,shAcc:43.8,pc:580,pt:720,pAcc:80.6,tk:8,cl:4,rating:8.1,mv:62.0,mvh:[["2024-08",98.2],["2025-02",77.6],["2025-08",61.6],["2026-02",62.4],["2026-05",62.5],["2026-08",62.0]]},
+{id:1039,name:"Moisés",age:28,nat:"Brasil",pos:"LW",club:"Botafogo",contract:"2027-12",h:180,w:75,apps:22,min:1760,g:6,a:4,sh:42,sot:18,shAcc:42.9,pc:820,pt:960,pAcc:85.4,tk:14,cl:8,rating:8.1,mv:58.0,mvh:[["2024-08",112.5],["2025-02",85.4],["2025-08",65.3],["2026-02",63.3],["2026-05",60.8],["2026-08",58.0]]},
+{id:1040,name:"Romildo Dias",age:34,nat:"Brasil",pos:"CB",club:"Santos",contract:"2026-12",h:188,w:86,apps:15,min:1350,g:1,a:0,sh:24,sot:4,shAcc:16.7,pc:1120,pt:1280,pAcc:87.5,tk:62,cl:108,rating:7.5,mv:12.0,mvh:[["2024-08",22.5],["2025-02",16.4],["2025-08",15.3],["2026-02",14.2],["2026-05",13.1],["2026-08",12.0]]},
+{id:1041,name:"Sousa",age:22,nat:"Brasil",pos:"CM",club:"Flamengo",contract:"2028-12",h:180,w:74,apps:14,min:980,g:1,a:2,sh:24,sot:6,shAcc:25.0,pc:720,pt:840,pAcc:85.7,tk:28,cl:10,rating:7.8,mv:42.0,mvh:[["2024-08",75.5],["2025-02",53.1],["2025-08",47.4],["2026-02",42.2],["2026-05",37.5],["2026-08",42.0]]},
+{id:1042,name:"Bruno Guimarães",age:26,nat:"Brasil",pos:"CM",club:"Newcastle",contract:"2028-12",h:181,w:75,apps:20,min:1680,g:2,a:1,sh:32,sot:8,shAcc:25.0,pc:1280,pt:1460,pAcc:87.7,tk:46,cl:12,rating:8.0,mv:92.0,mvh:[["2024-08",125.7],["2025-02",107.7],["2025-08",92.2],["2026-02",78.9],["2026-05",85.9],["2026-08",92.0]]},
+{id:1043,name:"Lucas Paquetá",age:26,nat:"Brasil",pos:"CM",club:"West Ham",contract:"2028-12",h:181,w:76,apps:22,min:1760,g:3,a:4,sh:38,sot:12,shAcc:31.6,pc:1340,pt:1520,pAcc:88.2,tk:35,cl:12,rating:8.1,mv:72.0,mvh:[["2024-08",121.4],["2025-02",99.5],["2025-08",81.8],["2026-02",67.4],["2026-05",70.1],["2026-08",72.0]]},
+{id:1044,name:"Ney",age:26,nat:"Brasil",pos:"FW",club:"Al-Hilal",contract:"2027-06",h:175,w:68,apps:16,min:1120,g:6,a:3,sh:42,sot:18,shAcc:42.9,pc:620,pt:780,pAcc:79.5,tk:8,cl:6,rating:8.1,mv:95.0,mvh:[["2024-08",154.3],["2025-02",121.3],["2025-08",95.9],["2026-02",96.6],["2026-05",96.3],["2026-08",95.0]]},
+{id:1045,name:"Claudinho",age:26,nat:"Brasil",pos:"CM",club:"Zenit",contract:"2027-12",h:177,w:71,apps:18,min:1440,g:4,a:3,sh:32,sot:12,shAcc:37.5,pc:1080,pt:1240,pAcc:87.1,tk:32,cl:14,rating:8.0,mv:68.0,mvh:[["2024-08",135.0],["2025-02",102.0],["2025-08",77.7],["2026-02",74.9],["2026-05",71.6],["2026-08",68.0]]},
+{id:1046,name:"Murilo",age:24,nat:"Brasil",pos:"CB",club:"Nottm Forest",contract:"2029-12",h:189,w:86,apps:12,min:1080,g:0,a:0,sh:18,sot:4,shAcc:22.2,pc:860,pt:980,pAcc:87.8,tk:68,cl:92,rating:7.8,mv:62.0,mvh:[["2024-08",118.3],["2025-02",86.0],["2025-08",79.9],["2026-02",73.8],["2026-05",67.8],["2026-08",62.0]]},
+{id:1047,name:"Antonio Carlos",age:30,nat:"Brasil",pos:"CB",club:"Nottm Forest",contract:"2027-12",h:190,w:87,apps:20,min:1800,g:1,a:0,sh:28,sot:6,shAcc:21.4,pc:1380,pt:1560,pAcc:88.5,tk:78,cl:126,rating:7.9,mv:45.0,mvh:[["2024-08",83.0],["2025-02",58.1],["2025-08",51.6],["2026-02",45.7],["2026-05",40.4],["2026-08",45.0]]},
+{id:1048,name:"Kleberson",age:25,nat:"Brasil",pos:"CM",club:"PSV",contract:"2026-12",h:181,w:76,apps:16,min:1280,g:2,a:2,sh:28,sot:10,shAcc:35.7,pc:1020,pt:1180,pAcc:86.4,tk:24,cl:8,rating:7.9,mv:55.0,mvh:[["2024-08",77.1],["2025-02",65.7],["2025-08",56.0],["2026-02",47.7],["2026-05",51.6],["2026-08",55.0]]},
+{id:1049,name:"Igor Vinhas",age:28,nat:"Brasil",pos:"CB",club:"Vasco",contract:"2027-12",h:190,w:87,apps:20,min:1800,g:1,a:0,sh:26,sot:4,shAcc:15.4,pc:1320,pt:1500,pAcc:88.0,tk:80,cl:140,rating:7.8,mv:38.0,mvh:[["2024-08",65.6],["2025-02",53.5],["2025-08",43.8],["2026-02",35.9],["2026-05",37.2],["2026-08",38.0]]},
+{id:1050,name:"Crucho",age:30,nat:"Brasil",pos:"FW",club:"Vasco",contract:"2026-12",h:182,w:78,apps:18,min:1320,g:7,a:2,sh:46,sot:20,shAcc:43.5,pc:340,pt:480,pAcc:70.8,tk:6,cl:8,rating:7.9,mv:28.0,mvh:[["2024-08",46.4],["2025-02",36.3],["2025-08",28.6],["2026-02",28.7],["2026-05",28.5],["2026-08",28.0]]},
+];
+</script>
+<script>
+/* ========== CONFIG ========== */
+const CLUB_COLORS = {
+  "Flamengo":["#C8102E","#1a1a1a"],
+  "Atlético Paranaense":["#C8102E","#111111"],
+  "Fluminense":["#7A0026","#00663C"],
+  "Botafogo":["#2b2b2b","#8a8a8a"],
+  "Cruzeiro":["#0033A0","#2f6fd6"],
+  "Santos":["#3a3a3a","#bdbdbd"],
+  "Real Madrid":["#c9a227","#00529F"],
+  "São Paulo":["#E4002B","#1a1a1a"],
+  "Zenit":["#0091D2","#003F7F"],
+  "Corinthians":["#2a2a2a","#7a7a7a"],
+  "Palmeiras":["#006437","#0b8f4d"],
+  "Liverpool":["#C8102E","#00897f"],
+  "Paris SG":["#004170","#DA291C"],
+  "Manchester Utd":["#DA291C","#b8961a"],
+  "West Ham":["#7A263A","#1B8fc0"],
+  "Tottenham":["#132257","#5a6fa8"],
+  "Lazio":["#4fa6cf","#1a4f8b"],
+  "Bahia":["#0057A8","#E30613"],
+  "Atlético Mineiro":["#1a1a1a","#6b6b6b"],
+  "Real Valladolid":["#5B2C83","#a066d3"],
+  "Grêmio":["#0D80BF","#1a1a1a"],
+  "Newcastle":["#241F20","#41a0cc"],
+  "Al-Hilal":["#1E3C96","#3b6fd8"],
+  "Nottm Forest":["#DD0000","#7a0000"],
+  "PSV":["#E2001A","#8a0010"],
+  "Vasco":["#1a1a1a","#a8a8a8"]
+};
+const POS_LABEL = {GK:"Goleiro",CB:"Zagueiro",LB:"Lateral-esquerdo",RB:"Lateral-direito",CM:"Meio-campista",LW:"Ponta-esquerda",RW:"Ponta-direita",FW:"Atacante"};
+const MONTHS = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+/* zonas de presença por posição: [x, y, peso, dispersãoX, dispersãoY] num campo 105x68, atacando para a direita */
+const ZONES = {
+  GK:[[6,34,1,6,10],[16,34,.25,6,10]],
+  CB:[[24,34,1,10,12],[40,34,.45,10,14]],
+  LB:[[30,10,.9,12,8],[60,8,.8,14,7],[82,10,.35,9,7]],
+  RB:[[30,58,.9,12,8],[60,60,.8,14,7],[82,58,.35,9,7]],
+  CM:[[48,34,1,13,14],[66,30,.7,12,12],[35,38,.5,10,12]],
+  LW:[[72,10,1,13,8],[89,22,.7,9,9],[55,14,.4,10,8]],
+  RW:[[72,58,1,13,8],[89,46,.7,9,9],[55,54,.4,10,8]],
+  FW:[[89,34,1,9,11],[75,30,.6,11,12],[97,40,.4,6,8]]
+};
+const NOW = new Date();
+
+/* ========== UTILITÁRIOS ========== */
+const $ = s => document.querySelector(s);
+const fmt = (n,d=1) => Number(n).toLocaleString("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d});
+const slug = s => s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+const norm = s => s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+const initials = n => { const w = n.trim().split(/\s+/); return (w.length > 1 ? w[0][0] + w[w.length-1][0] : w[0].slice(0,2)).toUpperCase(); };
+const period = p => { const [y,m] = p.split("-"); return `${MONTHS[+m-1]}/${y.slice(2)}`; };
+const periodLong = p => { const [y,m] = p.split("-"); return `${MONTHS[+m-1]}/${y}`; };
+function rng(seed){ let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function pick(r, weights){ const s = weights.reduce((a,b)=>a+b,0); let x = r()*s; for(let i=0;i<weights.length;i++){ x -= weights[i]; if(x <= 0) return i; } return weights.length-1; }
+const bar = (frac, mod = "") => `<svg class="bar ${mod}" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="bar-track" width="100" height="6"/><rect class="bar-fill" width="${(Math.max(0,Math.min(1,frac))*100).toFixed(1)}" height="6"/></svg>`;
+/* ---------- assets (pasta assets/ ao lado do index.html) ---------- */
+const ASSETS = "assets/";
+const asset = path => encodeURI(ASSETS + path);
+/* jogadores com foto: face_<chave>.png (avatar) e card_<chave>.png (carta) */
+const PHOTO_KEYS = new Set(("alan_franco arrascaeta bruno_guimaraes campaz casemiro claudinho diego_costa dudu everson everton_ribeiro "
+  + "felipe_anderson felipe_melo gonzalo_plata guilherme_arana gustavo_scarpa hulk junior_santos lucas_paqueta marquinhos militao "
+  + "moises murilo ney neymar paqueta pedro_rocha raphael_veiga richard_rios richarlison rodrygo savinho soteldo thiago_heleno "
+  + "thiago_silva vinicius_junior wendel yuri_alberto").split(" "));
+const PHOTO_ALIAS = {neymar_jr:"neymar"};
+const photoKey = p => { const k = slug(p.name).replace(/-/g,"_"); const a = PHOTO_ALIAS[k] || k; return PHOTO_KEYS.has(a) ? a : null; };
+const CRESTS = {
+  "Atlético Mineiro":"Atletico_mineiro.png","Botafogo":"botafogo.png","Corinthians":"Corinthians.png","Cruzeiro":"cruzeiro.png",
+  "Grêmio":"Gremio.svg","Lazio":"Lazio.png","Palmeiras":"palmeiras.png","Real Madrid":"Real_Madrid.png",
+  "Real Valladolid":"Real_Valladolid.png","Santos":"Santos.png","Tottenham":"Tottenham.png","Vasco":"vasco.webp"
+};
+/* avatar: iniciais no gradiente do clube como base; a foto (se houver) cobre por cima e some se falhar */
+const avatar = (p, size) => { const k = photoKey(p); return `<span class="avatar avatar-${size} club-${slug(p.club)}" aria-hidden="true">${initials(p.name)}${k ? `<img class="avatar-img" src="${asset(`jogadores/face_${k}.png`)}" alt="" loading="lazy">` : ""}</span>`; };
+/* brasão: PNG do clube; sem arquivo, cai para as iniciais do clube no gradiente das cores */
+const crest = (club, size = "sm") => CRESTS[club]
+  ? `<img class="crest crest-${size}" src="${asset("clubes/" + CRESTS[club])}" alt="Escudo do ${club}" title="${club}">`
+  : `<span class="avatar crest-fallback crest-${size} club-${slug(club)}" title="${club}">${clubInitials(club)}</span>`;
+/* imagem que não carregar some e deixa o fallback (iniciais) visível */
+document.addEventListener("error", e => { if(e.target.matches?.(".avatar-img,.holo-photo")) e.target.remove(); }, true);
+
+/* classes de cor por clube (evita estilos inline) */
+(function injectClubStyles(){
+  const css = Object.entries(CLUB_COLORS).map(([c,[a,b]]) => `.club-${slug(c)}{--c1:${a};--c2:${b}}`).join("\n");
+  const el = document.createElement("style"); el.textContent = css; document.head.appendChild(el);
+})();
+
+/* ========== DADOS DERIVADOS (depois de PLAYERS — Regra 4) ========== */
+const RANKED = PLAYERS.slice()
+  .sort((a,b) => b.rating - a.rating || b.min - a.min)
+  .map((p,i) => ({...p, rank:i+1, search:norm(`${p.name} ${p.club} ${p.pos} ${POS_LABEL[p.pos]} ${p.nat}`)}));
+const BY_ID = Object.fromEntries(RANKED.map(p => [p.id,p]));
+
+/* metric: métrica que ordena o ranking · pos/clubs: filtros cumulativos (OU dentro do grupo, E entre grupos) */
+const state = { selected: RANKED[0].id, query: "", metric: "rating", pos: new Set(), clubs: new Set() };
+
+/* ========== MÉTRICAS ORDENÁVEIS E FILTROS ========== */
+const int = v => v.toLocaleString("pt-BR");
+const METRICS = {
+  rating:{label:"Rating geral",      head:"Rating",    get:p=>p.rating, show:p=>fmt(p.rating)},
+  g:     {label:"Gols",              head:"Gols",      get:p=>p.g,      show:p=>int(p.g)},
+  a:     {label:"Assistências",      head:"Assist.",   get:p=>p.a,      show:p=>int(p.a)},
+  tk:    {label:"Desarmes",          head:"Desarmes",  get:p=>p.tk,     show:p=>int(p.tk)},
+  cl:    {label:"Cortes",            head:"Cortes",    get:p=>p.cl,     show:p=>int(p.cl)},
+  sh:    {label:"Chutes totais",     head:"Chutes",    get:p=>p.sh,     show:p=>int(p.sh)},
+  sot:   {label:"Chutes no alvo",    head:"No alvo",   get:p=>p.sot,    show:p=>int(p.sot)},
+  shAcc: {label:"Precisão de chute", head:"Prec. %",   get:p=>p.shAcc,  show:p=>fmt(p.shAcc)},
+  pt:    {label:"Passes totais",     head:"Passes",    get:p=>p.pt,     show:p=>int(p.pt)},
+  pc:    {label:"Passes certos",     head:"Certos",    get:p=>p.pc,     show:p=>int(p.pc)},
+  pAcc:  {label:"Precisão de passe", head:"Prec. %",   get:p=>p.pAcc,   show:p=>fmt(p.pAcc)},
+  mv:    {label:"Valor de mercado",  head:"€ mi",      get:p=>p.mv,     show:p=>fmt(p.mv)},
+  h:     {label:"Altura",            head:"m",         get:p=>p.h,      show:p=>fmt(p.h/100,2)},
+  w:     {label:"Peso",              head:"kg",        get:p=>p.w,      show:p=>int(p.w)},
+  age:   {label:"Idade",             head:"Anos",      get:p=>p.age,    show:p=>int(p.age)}
+};
+const POS_GROUPS = {ATA:["FW","LW","RW"], MEI:["CM"], DEF:["CB","LB","RB"], GOL:["GK"]};
+const POS_GROUP_LABEL = {ATA:"Ataque", MEI:"Meio-campo", DEF:"Defesa", GOL:"Goleiro"};
+const groupOf = pos => Object.keys(POS_GROUPS).find(g => POS_GROUPS[g].includes(pos));
+const CLUBS = [...new Set(RANKED.map(p => p.club))].sort((a,b) => a.localeCompare(b,"pt-BR"));
+
+/* lista visível: filtros → ordenação pela métrica ativa (desempate: rating) → colocação */
+function currentList(){
+  const m = METRICS[state.metric];
+  return RANKED
+    .filter(p => (!state.pos.size || state.pos.has(groupOf(p.pos))) && (!state.clubs.size || state.clubs.has(p.club)))
+    .sort((a,b) => m.get(b) - m.get(a) || a.rank - b.rank)
+    .map((p,i) => ({p, n:i+1}));
+}
+
+function setMetric(k){
+  if(!METRICS[k]) return;
+  state.metric = (state.metric === k && k !== "rating") ? "rating" : k;   /* clicar de novo volta ao rating */
+  renderRanking();
+  $("#rank-list").scrollTop = 0;
+  /* a carta em destaque e a ficha passam para o 1º colocado da nova métrica */
+  const top = currentList()[0];
+  if(top && top.p.id !== state.selected) select(top.p.id);
+}
+function markMetric(){
+  document.querySelectorAll("[data-metric]").forEach(e => {
+    const on = e.dataset.metric === state.metric;
+    e.classList.toggle("is-metric", on);
+    e.setAttribute("aria-pressed", on);
+  });
+}
+
+/* ========== RENDER: RANKING ========== */
+const CROWN = `<svg class="crown" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z"/></svg>`;
+
+function renderRanking(){
+  const m = METRICS[state.metric], list = currentList(), q = norm(state.query.trim());
+  const filtered = state.pos.size || state.clubs.size;
+  $("#metric-head").textContent = m.label;
+  const pod = $("#podium"), showPod = !q && list.length >= 3;
+  pod.hidden = !showPod;
+  if(showPod) pod.innerHTML = [1,0,2].map(i => {
+    const {p, n} = list[i];
+    return `<button class="podium-slot p${n}" data-id="${p.id}" aria-label="${n}º lugar: ${p.name}, ${m.label.toLowerCase()} ${m.show(p)}">
+      ${n===1 ? CROWN : ""}
+      ${avatar(p, n===1 ? "xl" : "md")}
+      <span class="podium-name">${p.name}</span>
+      <span class="podium-club">${p.club}</span>
+      <span class="podium-rating num">${m.show(p)}</span>
+      <span class="podium-place num">${n}º</span>
+    </button>`;
+  }).join("");
+  const rows = q ? list.filter(x => x.p.search.includes(q)) : list.slice(showPod ? 3 : 0);
+  $("#list-label").textContent = q ? `${rows.length} resultado${rows.length===1?"":"s"}` : showPod ? "Demais colocados" : "Classificação";
+  $("#rank-list").innerHTML = rows.length ? rows.map(({p, n}) => `
+    <button class="rank-row" role="listitem" data-id="${p.id}">
+      <span class="rank-num num">${String(n).padStart(2,"0")}</span>
+      ${avatar(p,"sm")}
+      <span class="row-main"><span class="row-name">${p.name}</span><span class="row-sub">${p.club} · ${POS_LABEL[p.pos]}</span></span>
+      <span class="row-metric num">${m.show(p)}</span>
+    </button>`).join("")
+    : (list.length && !showPod && !q) ? "" : `<p class="empty">${q ? `Nenhum jogador encontrado para “${state.query}”` : filtered ? "Nenhum jogador com esses filtros" : ""}.</p>`;
+  markActive(); markMetric();
+}
+
+/* ========== FILTROS (barra superior) ========== */
+function renderFilters(){
+  document.querySelectorAll("[data-pos-filter]").forEach(b => {
+    const on = state.pos.has(b.dataset.posFilter);
+    b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", on);
+  });
+  const n = state.clubs.size, btn = $("#club-btn");
+  btn.classList.toggle("is-on", n > 0);
+  $("#club-btn-label").textContent = n ? `Clubes · ${n}` : "Clubes";
+  $("#filter-clear").hidden = !(n || state.pos.size);
+  document.querySelectorAll("#club-menu input").forEach(i => { i.checked = state.clubs.has(i.value); });
+}
+function buildClubMenu(){
+  const count = c => RANKED.filter(p => p.club === c).length;
+  $("#club-list").innerHTML = CLUBS.map(c => `
+    <label class="club-opt">
+      <input type="checkbox" value="${c}">
+      <span class="club-check" aria-hidden="true"></span>
+      ${crest(c)}
+      <span class="club-opt-name">${c}</span>
+      <span class="club-opt-count num">${count(c)}</span>
+    </label>`).join("");
+}
+/* o menu vive direto no <body> (position:fixed) para ficar acima de todos os painéis
+   e ter blur de verdade — dentro da topbar ele herdaria o stacking context dela */
+function placeClubMenu(){
+  const r = $("#club-btn").getBoundingClientRect(), menu = $("#club-menu");
+  const w = menu.offsetWidth;
+  menu.style.setProperty("--menu-x", `${Math.max(8, Math.min(innerWidth - w - 8, r.right - w))}px`);
+  menu.style.setProperty("--menu-y", `${r.bottom + 8}px`);
+}
+function toggleClubMenu(open){
+  const menu = $("#club-menu"), btn = $("#club-btn");
+  open = open ?? menu.hidden;
+  menu.hidden = !open;
+  btn.setAttribute("aria-expanded", open);
+  if(open) placeClubMenu();
+}
+function applyFilters(){ renderFilters(); renderRanking(); $("#rank-list").scrollTop = 0; }
+
+function markActive(){
+  document.querySelectorAll("[data-id]").forEach(b => b.classList.toggle("is-active", +b.dataset.id === state.selected));
+}
+
+/* ========== RENDER: FICHA TÉCNICA ========== */
+/* escala "redonda" para eixos */
+function niceScale(min, max, ticks = 4){
+  const range = (max - min) || Math.abs(max) || 1;
+  const rough = range / ticks, mag = 10 ** Math.floor(Math.log10(rough));
+  const step = [1,2,2.5,5,10].find(s => s*mag >= rough) * mag;
+  const lo = Math.floor(min/step)*step, hi = Math.ceil(max/step)*step || step;
+  const vals = []; for(let v = lo; v <= hi + step/2; v += step) vals.push(+v.toFixed(6));
+  return {lo, hi: vals[vals.length-1], vals};
+}
+
+/* gráfico de linha com eixos X (períodos) e Y (valor), grade e marcadores */
+function marketChart(hist){
+  const W = 340, H = 220, L = 46, R = 14, T = 20, B = 46;
+  const vals = hist.map(h => h[1]);
+  const {lo, hi, vals:ticks} = niceScale(Math.min(...vals), Math.max(...vals));
+  const n = hist.length;
+  const x = i => L + i*(W-L-R)/(n-1);
+  const y = v => T + (1-(v-lo)/(hi-lo))*(H-T-B);
+  const pts = vals.map((v,i) => [x(i), y(v)]);
+  const line = pts.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  const base = H - B;
+  const area = `M${pts[0][0].toFixed(1)},${base} L${line.replace(/ /g," L")} L${pts[n-1][0].toFixed(1)},${base} Z`;
+  marketChart.last = {pts, base};
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Valor de mercado por período de registro">
+    <defs><linearGradient id="chart-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="chart-stop-a"/><stop offset="1" class="chart-stop-b"/></linearGradient></defs>
+    ${ticks.map(t => `<line class="chart-grid" x1="${L}" x2="${W-R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="chart-tick" x="${L-6}" y="${(y(t)+3.5).toFixed(1)}" text-anchor="end">${fmt(t, t % 1 ? 1 : 0)}</text>`).join("")}
+    <line class="chart-axis" x1="${L}" x2="${L}" y1="${T-6}" y2="${base}"/>
+    <line class="chart-axis" x1="${L}" x2="${W-R}" y1="${base}" y2="${base}"/>
+    ${hist.map((h,i) => `<line class="chart-axis" x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${base}" y2="${base+4}"/><text class="chart-tick" x="${x(i).toFixed(1)}" y="${base+16}" text-anchor="middle">${period(h[0])}</text>`).join("")}
+    <path class="chart-area" d="${area}" fill="url(#chart-g)"/>
+    <polyline class="chart-line" points="${line}"/>
+    ${pts.map((p,i) => `<text class="chart-val${i===n-1?" last":""}" x="${p[0].toFixed(1)}" y="${(p[1]-9).toFixed(1)}" text-anchor="middle">${fmt(vals[i])}</text><circle class="chart-dot${i===n-1?" last":""}" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4"><title>${periodLong(hist[i][0])}: € ${fmt(vals[i])} mi</title></circle>`).join("")}
+    <text class="chart-title" x="${(L+W-R)/2}" y="${H-4}" text-anchor="middle">Período de registro</text>
+    <text class="chart-title" x="11" y="${(T+base)/2}" text-anchor="middle" transform="rotate(-90 11 ${(T+base)/2})">Valor (€ mi)</text>
+  </svg>`;
+}
+
+function renderBio(p){
+  const h = p.mvh, last = h[h.length-1], prev = h[h.length-2], first = h[0];
+  const d = last[1] - prev[1], pct = d / prev[1] * 100;
+  const total = (last[1] - first[1]) / first[1] * 100;
+  const deltaHTML = Math.abs(d) < 0.05
+    ? `<span class="delta delta-flat">Sem alteração vs ${period(prev[0])}</span>`
+    : `<span class="delta ${d>0?"delta-up":"delta-down"} num">${d>0?"▲ +":"▼ −"}${fmt(Math.abs(d))} mi (${d>0?"+":"−"}${fmt(Math.abs(pct))}%)</span>`;
+  $("#bio").innerHTML = `
+  <div class="card">
+    <div class="bio-head">
+      ${avatar(p,"lg")}
+      <div class="bio-id">
+        <span class="bio-name">${p.name}</span>
+        <span class="bio-phys bio-phys-main num"><span class="metric metric-inline" data-metric="h" role="button" tabindex="0" title="Ordenar ranking por altura">${fmt(p.h/100,2)} m</span> · <span class="metric metric-inline" data-metric="w" role="button" tabindex="0" title="Ordenar ranking por peso">${p.w} kg</span> · <span class="metric metric-inline" data-metric="age" role="button" tabindex="0" title="Ordenar ranking por idade">${p.age} anos</span></span>
+        <span class="bio-sub">${p.nat}</span>
+      </div>
+    </div>
+    <div class="info-row">
+      <div><span class="label">Clube atual</span><span class="info-strong club-line">${crest(p.club)}${p.club}</span><span class="bio-sub">${POS_LABEL[p.pos]}</span></div>
+      <div><span class="label">Contrato até</span><span class="info-strong num">${periodLong(p.contract)}</span></div>
+    </div>
+    <div class="market">
+      <div class="market-top">
+        <div class="info-row metric" data-metric="mv" role="button" tabindex="0" title="Ordenar ranking por valor de mercado"><div><span class="label">Valor de mercado</span><span class="market-value num">€ ${fmt(p.mv)} <small>mi</small></span></div></div>
+        ${deltaHTML}
+      </div>
+      ${marketChart(h)}
+      <span class="market-foot">${total>=0?"Valorização":"Desvalorização"} de <b class="${total>=0?"delta-up":"delta-down"} num">${fmt(Math.abs(total))}%</b> desde ${periodLong(first[0])} · ${h.length} registros.</span>
+    </div>
+  </div>`;
+  /* linha, área, marcadores e rótulos deslizam até os valores do novo jogador */
+  const svg = $("#bio .chart"), {base} = marketChart.last;
+  const line = svg.querySelector(".chart-line"), area = svg.querySelector(".chart-area");
+  const dots = [...svg.querySelectorAll(".chart-dot")], vals = [...svg.querySelectorAll(".chart-val")];
+  tweenPoints("market", marketChart.last.pts, pts => {
+    const l = pts.map(q => `${q[0].toFixed(1)},${q[1].toFixed(1)}`).join(" ");
+    line.setAttribute("points", l);
+    area.setAttribute("d", `M${pts[0][0].toFixed(1)},${base} L${l.replace(/ /g," L")} L${pts[pts.length-1][0].toFixed(1)},${base} Z`);
+    dots.forEach((d,i) => { d.setAttribute("cx", pts[i][0].toFixed(1)); d.setAttribute("cy", pts[i][1].toFixed(1)); });
+    vals.forEach((t,i) => { t.setAttribute("x", pts[i][0].toFixed(1)); t.setAttribute("y", (pts[i][1]-9).toFixed(1)); });
+  });
+}
+
+/* ========== RENDER: PERFIL DE DESEMPENHO ========== */
+const RADAR_AXES = [["Gols","g"],["Finalizações","sot"],["Desarmes","tk"],["Cortes","cl"],["Passes","pc"],["Assistências","a"]];
+const STAT_MAX = Object.fromEntries(RADAR_AXES.map(([,k]) => [k, Math.max(...PLAYERS.map(p => p[k]))]));
+/* faixas de precisão: [limite baixa, limite média] em % */
+const ACC_BANDS = { shot:[30,40], pass:[75,85] };
+
+function radarChart(p){
+  const W = 340, H = 256, cx = 170, cy = 132, R = 78, n = RADAR_AXES.length;
+  const ang = i => (-90 + i*360/n) * Math.PI/180;
+  const pt = (i, r) => [cx + r*Math.cos(ang(i)), cy + r*Math.sin(ang(i))];
+  const poly = r => RADAR_AXES.map((_,i) => pt(i,r).map(v => v.toFixed(1)).join(",")).join(" ");
+  const rings = [.25,.5,.75,1].map(f => `<polygon class="radar-ring${f===1?" outer":""}" points="${poly(R*f)}"/>`).join("");
+  const spokes = RADAR_AXES.map((_,i) => { const [x,y] = pt(i,R); return `<line class="radar-spoke" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }).join("");
+  const data = RADAR_AXES.map(([,k],i) => pt(i, R*Math.min(1, p[k]/STAT_MAX[k])));
+  radarChart.last = data;
+  const labels = RADAR_AXES.map(([l,k],i) => {
+    const [x,y] = pt(i, R+16), c = Math.cos(ang(i)), s = Math.sin(ang(i));
+    const anchor = c > .3 ? "start" : c < -.3 ? "end" : "middle";
+    const y0 = s < -.9 ? y - 14 : s > .9 ? y + 4 : y - 4;
+    /* cada eixo é clicável: retângulo invisível amplia a área de clique em volta do rótulo */
+    const bx = anchor === "start" ? x - 4 : anchor === "end" ? x - 92 : x - 48;
+    return `<g class="radar-axis metric" data-metric="${k}" role="button" tabindex="0"><title>Ordenar ranking por ${l.toLowerCase()}</title>
+            <rect class="radar-hit" x="${bx.toFixed(1)}" y="${(y0-12).toFixed(1)}" width="96" height="32" rx="8"/>
+            <text class="radar-label" x="${x.toFixed(1)}" y="${y0.toFixed(1)}" text-anchor="${anchor}">${l}</text>
+            <text class="radar-value" x="${x.toFixed(1)}" y="${(y0+15).toFixed(1)}" text-anchor="${anchor}">${p[k].toLocaleString("pt-BR")}</text></g>`;
+  }).join("");
+  return `<svg class="radar" viewBox="0 0 ${W} ${H}" role="img" aria-label="Radar de atributos de ${p.name}">
+    ${rings}${spokes}
+    <polygon class="radar-area" points="${data.map(d => d.map(v => v.toFixed(1)).join(",")).join(" ")}"/>
+    ${data.map(([x,y],i) => `<circle class="radar-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"><title>${RADAR_AXES[i][0]}: ${p[RADAR_AXES[i][1]]} (máx. da liga ${STAT_MAX[RADAR_AXES[i][1]]})</title></circle>`).join("")}
+    ${labels}
+  </svg>`;
+}
+
+/* medidor de precisão (semicírculo com faixas vermelha / amarela / verde) */
+function gauge(pct, [low, mid], label, key){
+  const cx = 60, cy = 58, r = 46;
+  const P = v => { const a = Math.PI * (1 - v/100); return [(cx + r*Math.cos(a)).toFixed(2), (cy - r*Math.sin(a)).toFixed(2)]; };
+  const arc = (a, b) => { const [x1,y1] = P(a), [x2,y2] = P(b); return `M${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2}`; };
+  const band = pct < low ? "band-low" : pct < mid ? "band-mid" : "band-high";
+  const bandName = {"band-low":"Baixa","band-mid":"Média","band-high":"Alta"}[band];
+  const a = Math.PI * (1 - pct/100), nx = cx + (r-14)*Math.cos(a), ny = cy - (r-14)*Math.sin(a);
+  return `<div class="gauge metric" data-metric="${key}" role="button" tabindex="0" title="Ordenar ranking por ${label.toLowerCase()}">
+    <span class="label">${label}</span>
+    <svg viewBox="0 0 120 66" role="img" aria-label="${label}: ${fmt(pct)}%, precisão ${bandName.toLowerCase()}">
+      <path class="gauge-track band-low" d="${arc(0,low)}"/>
+      <path class="gauge-track band-mid" d="${arc(low,mid)}"/>
+      <path class="gauge-track band-high" d="${arc(mid,100)}"/>
+      ${pct > 0 ? `<path class="gauge-arc ${band}" d="${arc(0, Math.max(.5, pct))}"/>` : ""}
+      <line class="gauge-needle" x1="${cx}" y1="${cy}" x2="${nx.toFixed(2)}" y2="${ny.toFixed(2)}"/>
+      <circle class="gauge-hub" cx="${cx}" cy="${cy}" r="4"/>
+    </svg>
+    <span class="gauge-value num ${band}">${fmt(pct)}%</span>
+  </div>`;
+}
+
+function renderPerf(p){
+  const top = Math.max(1, Math.round(p.rank / RANKED.length * 100));
+  const tile = (l, v, k) => `<div class="tile metric" data-metric="${k}" role="button" tabindex="0" title="Ordenar ranking por ${l.toLowerCase()}"><span class="label">${l}</span><span class="tile-value num">${v.toLocaleString("pt-BR")}</span></div>`;
+  $("#perf").innerHTML = `
+  <div class="card">
+    <div class="rating-hero metric" data-metric="rating" role="button" tabindex="0" title="Ordenar ranking por rating geral">
+      <span class="rating-big num">${fmt(p.rating)}</span>
+      <div class="rating-meta">
+        <span class="label">Rating geral · de 10</span>
+        ${bar(p.rating/10)}
+        <span class="bio-sub">${p.rank}º de ${RANKED.length} · top ${top}% da liga</span>
+      </div>
+    </div>
+    ${radarChart(p)}
+    <span class="radar-note">Escala: maior valor da liga em cada atributo = borda do radar</span>
+    <div class="stat-cols">
+      <div class="stat-col">${tile("Chutes totais", p.sh, "sh")}${tile("Chutes no alvo", p.sot, "sot")}${gauge(p.shAcc, ACC_BANDS.shot, "Precisão de chute", "shAcc")}</div>
+      <div class="stat-col">${tile("Passes totais", p.pt, "pt")}${tile("Passes certos", p.pc, "pc")}${gauge(p.pAcc, ACC_BANDS.pass, "Precisão de passe", "pAcc")}</div>
+    </div>
+  </div>`;
+  /* os pontos do radar deslizam da posição do jogador anterior até a do novo */
+  const poly = $("#perf .radar-area"), dots = [...document.querySelectorAll("#perf .radar-dot")];
+  tweenPoints("radar", radarChart.last, pts => {
+    poly.setAttribute("points", pts.map(q => q.map(v => v.toFixed(1)).join(",")).join(" "));
+    dots.forEach((d,i) => { d.setAttribute("cx", pts[i][0].toFixed(1)); d.setAttribute("cy", pts[i][1].toFixed(1)); });
+  });
+}
+
+/* ---------- interpolação de pontos (radar e valor de mercado) ----------
+   guarda a posição atual de cada gráfico; ao trocar de jogador, anima de onde
+   os pontos estão (mesmo no meio de outra animação) até o destino novo */
+const TWEENS = {};
+function tweenPoints(key, to, apply, ms = 650){
+  const prev = TWEENS[key];
+  if(prev) cancelAnimationFrame(prev.raf);
+  const from = prev && prev.cur.length === to.length ? prev.cur : null;
+  const st = TWEENS[key] = { cur: from || to, raf: 0 };
+  if(!from || matchMedia("(prefers-reduced-motion: reduce)").matches){ st.cur = to; apply(to); return; }
+  const t0 = performance.now(), ease = t => 1 - Math.pow(1 - t, 3);
+  const step = now => {
+    const t = Math.min(1, (now - t0) / ms), e = ease(t);
+    st.cur = to.map((p,i) => [from[i][0] + (p[0]-from[i][0])*e, from[i][1] + (p[1]-from[i][1])*e]);
+    apply(st.cur);
+    if(t < 1) st.raf = requestAnimationFrame(step);
+  };
+  apply(from);
+  st.raf = requestAnimationFrame(step);
+}
+
+/* ========== RENDER: MAPA DE PRESENÇA (campo 3D) ========== */
+/* campo de presença estimado: soma de gaussianas nas zonas da posição (x 0..105 rumo ao ataque, y 0..68 da esquerda p/ direita) */
+function heatGrid(p, cols = 16, rows = 24){
+  const r = rng(p.id);
+  const zs = (ZONES[p.pos] || ZONES.CM).map(z => [z[0]+(r()-.5)*10, z[1]+(r()-.5)*8, z[2]*(.8+r()*.4), z[3], z[4]]);
+  zs.push([20+r()*65, 8+r()*52, .22, 8, 8]);
+  const grid = []; let max = 0;
+  for(let row=0; row<rows; row++) for(let c=0; c<cols; c++){
+    /* no campo 3D a linha 0 é a goleira do fundo (ataque) e a coluna 0 é o lado esquerdo */
+    const x = (1 - (row+.5)/rows) * 105, y = (c+.5)/cols * 68;
+    let v = 0;
+    for(const [zx,zy,w,sx,sy] of zs) v += w*Math.exp(-((x-zx)**2/(2*sx*sx) + (y-zy)**2/(2*sy*sy)));
+    v *= .9 + r()*.2;
+    grid.push(v); if(v > max) max = v;
+  }
+  return {grid: grid.map(v => v/max), cols, rows};
+}
+
+/* --- componente CAMPO 3D (origem: elementos/campo3d_card.html) ---
+   uso: const c = campo3D(el, {cols, rows}); c.pintar(grade 0..1)
+   calor e brilho desenhados em SVG por atributos (sem estilo inline). */
+const C3_STOPS = [[47,127,214],[56,217,138],[245,206,59],[255,107,107]];   /* azul aux. → verde → dourado → vermelho */
+function c3Cor(w){
+  const t = Math.max(0,Math.min(1,w))*(C3_STOPS.length-1);
+  const i = Math.min(C3_STOPS.length-2,Math.floor(t)), f = t-i, a = C3_STOPS[i], b = C3_STOPS[i+1];
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`;
+}
+function c3Op(w){ const t = Math.max(0,Math.min(1,(w-.10)/(.55-.10))); return t*t*(3-2*t)*.94; }
+const C3_HTML = `
+<div class="c3-sombra"></div>
+<div class="c3-flutua"><div class="c3-cena">
+  <div class="c3-topo">
+    <div class="c3-pista">
+      <svg class="c3-calor" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      <svg class="c3-brilho" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs><radialGradient id="c3-glow"><stop offset="0" class="c3-glow-a"/><stop offset=".7" stop-opacity="0"/></radialGradient></defs>
+        <ellipse rx="17" ry="11" fill="url(#c3-glow)"/>
+      </svg>
+    </div>
+    <div class="c3-linhas">
+      <i class="borda"></i><i class="meio"></i><i class="circulo"></i>
+      <i class="area n"></i><i class="area s"></i><i class="pequena n"></i><i class="pequena s"></i>
+      <i class="ponto centro"></i><i class="ponto pn"></i><i class="ponto ps"></i>
+      <i class="canto no"></i><i class="canto ne"></i><i class="canto so"></i><i class="canto se"></i>
+    </div>
+    <div class="c3-sombra-gol n"></div><div class="c3-sombra-gol s"></div>
+  </div>
+  <div class="c3-lado s"></div><div class="c3-lado o"></div>
+  <div class="c3-gol n"></div><div class="c3-gol s"></div>
+</div></div>
+<div class="c3-poeira"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>`;
+
+function campo3D(el, opts){
+  const o = Object.assign({cols:16, rows:24}, opts || {});
+  el.innerHTML = C3_HTML;
+  const topo = el.querySelector(".c3-topo"), calor = el.querySelector(".c3-calor");
+  const brilhoSvg = el.querySelector(".c3-brilho"), glow = el.querySelector("ellipse"), stop = el.querySelector(".c3-glow-a");
+  return {
+    pintar(g){
+      const cw = 100/o.cols, ch = 100/o.rows;
+      let pico = 0, px = 50, py = 50, html = "";
+      g.forEach((w,i) => {
+        const c = i % o.cols, r = Math.floor(i / o.cols);
+        if(w > pico){ pico = w; px = (c+.5)*cw; py = (r+.5)*ch; }
+        const op = c3Op(w);
+        if(op > .01) html += `<rect x="${(c*cw).toFixed(2)}" y="${(r*ch).toFixed(2)}" width="${(cw+.9).toFixed(2)}" height="${(ch+.9).toFixed(2)}" fill="${c3Cor(w)}" opacity="${op.toFixed(2)}"/>`;
+      });
+      calor.innerHTML = html;
+      glow.setAttribute("cx", px.toFixed(1)); glow.setAttribute("cy", py.toFixed(1));
+      stop.setAttribute("stop-color", c3Cor(pico));
+      brilhoSvg.setAttribute("opacity", (.20 + .32*pico).toFixed(2));
+      topo.classList.remove("trocando"); void topo.offsetWidth; topo.classList.add("trocando");
+    }
+  };
+}
+
+let CAMPO = null;
+function renderHeatmap(p){
+  const {grid, cols, rows} = heatGrid(p);
+  if(!CAMPO) CAMPO = campo3D($("#campo3d"), {cols, rows});
+  CAMPO.pintar(grid);
+  /* terços (por linha) e zona dominante */
+  const sum = [0,0,0]; let best = 0;
+  grid.forEach((v,i) => {
+    const row = Math.floor(i/cols), x = (1-(row+.5)/rows)*105;
+    sum[x < 35 ? 0 : x < 70 ? 1 : 2] += v; if(v > grid[best]) best = i;
+  });
+  const tot = sum[0]+sum[1]+sum[2], pct = sum.map(s => Math.round(s/tot*100));
+  const bRow = Math.floor(best/cols), bCol = best % cols;
+  const bx = (1-(bRow+.5)/rows)*105, by = (bCol+.5)/cols*68;
+  const bt = bx < 35 ? "Terço defensivo" : bx < 70 ? "Meio-campo" : "Terço ofensivo";
+  const corr = by < 22.7 ? "corredor esquerdo" : by < 45.3 ? "corredor central" : "corredor direito";
+  $("#campo3d").setAttribute("aria-label", `Mapa de presença de ${p.name}: mais presente no ${bt.toLowerCase()}, ${corr}`);
+  const thirdName = ["Defensivo","Meio-campo","Ofensivo"];
+  $("#heat-info").innerHTML = `
+    <div class="pitch-dir"><span>Defesa · gol da frente</span><span>Ataque · gol do fundo</span></div>
+    <div class="heat-legend"><span>Baixa</span><span class="heat-scale"></span><span>Alta</span></div>
+    <div class="divider"></div>
+    <div class="info-row"><div><span class="label">Zona dominante</span><span class="info-strong">${bt} · ${corr}</span></div></div>
+    <div class="thirds">
+      ${pct.map((v,k) => `<div class="tile"><span class="label">${thirdName[k]}</span><span class="tile-value num">${v}%</span>${bar(v/100,"bar-thin")}</div>`).join("")}
+    </div>`;
+}
+
+/* ========== RENDER: PÊNALTIS (goleira 3D) ========== */
+/* cobranças simuladas; posição em coordenadas da BOCA do gol: u 0..1 (esq→dir), v 0..1 (chão→travessão) */
+function penaltyData(p){
+  const r = rng(p.id*7 + 3);
+  const base = {FW:6,LW:4,RW:4,CM:3,LB:1,RB:1,CB:1,GK:0}[p.pos] ?? 1;
+  const taken = Math.round(base * (.35 + r()*.9) * Math.min(1, p.apps/15));
+  const scored = Math.min(p.g, Math.round(taken * (.6 + r()*.35)));
+  const misses = taken - scored, saved = Math.round(misses * (.4 + r()*.4));
+  const goalW = [3,1,3, 2,1,2, 4,1.5,4], saveW = [1,1,1, 2,2,2, 3,3,3];
+  const kicks = [];
+  const cl = v => Math.max(.05, Math.min(.95, v));
+  for(let k=0;k<taken;k++){
+    const type = k < scored ? "goal" : k < scored + saved ? "saved" : "out";
+    if(type === "out"){
+      const side = pick(r,[2,1,1]);
+      kicks.push(side === 0 ? {type, u:.12 + r()*.76, v:1.08 + r()*.03} : {type, u: side === 1 ? -.035 : 1.035, v:.15 + r()*.6});
+    } else {
+      const z = pick(r, type === "goal" ? goalW : saveW);
+      kicks.push({type, z, u: cl((z%3 + .5)/3 + (r()-.5)*.18), v: cl(1 - (Math.floor(z/3) + .5)/3 + (r()-.5)*.16)});
+    }
+  }
+  return {taken, scored, saved, out: misses - saved, kicks};
+}
+
+/* --- componente GOLEIRA 3D (origem: elementos/goleira_card.html) — Canvas 2D, rede ao vento ---
+   API: boca(u,v) → px CSS no plano da boca do gol; caixa() → [w,h]; aoRedimensionar() */
+function goleiraCard(canvas, opts){
+  const o = Object.assign({vento:.6, grama:1}, opts || {});
+  const ctx = canvas.getContext("2d");
+  const GW=7.32, GH=2.44, HW=GW/2, DEEP=1.95;
+  const EYE=[-3.05,1.70,7.55], TGT=[0.05,1.00,-0.55];
+  const WDX=0.93, WDZ=0.37;
+  const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+  const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const nrm=a=>{ const l=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/l,a[1]/l,a[2]/l]; };
+  const FWD=nrm(sub(TGT,EYE)), RGT=nrm(cross(FWD,[0,1,0])), UPV=cross(RGT,FWD);
+  let F=1, CX=0, CY=0, W=0, H=0, DPR=1;
+  function proj(x,y,z){
+    const dx=x-EYE[0], dy=y-EYE[1], dz=z-EYE[2];
+    const d=dx*FWD[0]+dy*FWD[1]+dz*FWD[2], s=F/(d>0.15?d:0.15);
+    return [CX+(dx*RGT[0]+dy*RGT[1]+dz*RGT[2])*s, CY-(dx*UPV[0]+dy*UPV[1]+dz*UPV[2])*s, d];
+  }
+  function vento(x,z,t){
+    const s=0.55*Math.sin(0.55*x+0.30*z-1.45*t)+0.30*Math.sin(0.90*x-0.42*z-2.30*t+1.7)+0.15*Math.sin(1.70*x+0.60*z-3.40*t+4.1);
+    return s*(0.58+0.42*Math.sin(t*0.41)*Math.sin(t*0.26+1.1));
+  }
+  const PROF=[[0,1],[0.30,0.982],[0.52,0.885],[0.70,0.700],[0.85,0.440],[0.95,0.200],[1,0]];
+  function perfil(v){
+    const f=Math.min(Math.max(v,0),1)*(PROF.length-1), i=Math.min(Math.floor(f),PROF.length-2), k=f-i;
+    return [-DEEP*(PROF[i][0]+(PROF[i+1][0]-PROF[i][0])*k), GH*(PROF[i][1]+(PROF[i+1][1]-PROF[i][1])*k)];
+  }
+  const TONS=["#16351d","#1c4023","#234c29","#2a5931","#33693a"], LARG=[0.8,1.4,2.2,3.2];
+  let grupos=[];
+  function noChao(sx,sy){
+    const a=(sx-CX)/F, b=-(sy-CY)/F, dy=FWD[1]+a*RGT[1]+b*UPV[1];
+    if(dy>-1e-4) return null;
+    const k=-EYE[1]/dy; if(k>27) return null;
+    return [EYE[0]+k*(FWD[0]+a*RGT[0]+b*UPV[0]), EYE[2]+k*(FWD[2]+a*RGT[2]+b*UPV[2]), k];
+  }
+  function semear(){
+    const horY=proj(0,0,-900)[1];
+    grupos=TONS.flatMap(c=>LARG.map(l=>({cor:c, lw:l*DPR, atras:[], frente:[]})));
+    const y0=Math.max(horY+2,0), faixa=(H+14)-y0; if(faixa<=0) return;
+    const alvo=Math.round(Math.min(2200,(W+20)*faixa/(52*DPR*DPR))*o.grama);
+    let seed=20260804, feitas=0, tent=0;
+    const rnd=()=>{ seed=(seed*1664525+1013904223)>>>0; return seed/4294967296; };
+    while(feitas<alvo && tent++<alvo*8){
+      const g=noChao(-10+rnd()*(W+20), y0+rnd()*faixa); if(!g) continue;
+      feitas++;
+      const k=g[2];
+      const lam={x:g[0], z:g[1], h:(0.040+rnd()*0.055)*Math.min(1.85,1+0.036*k), rig:0.55+rnd()*0.85, fase:rnd()*6.28, pend:(rnd()-0.5)*0.55};
+      let ti=Math.round(rnd()*4); if(k>11) ti=Math.max(0,ti-1);
+      const px=(0.011+rnd()*0.010)*F/k, li=px<1.1?0:px<1.8?1:px<2.8?2:3;
+      const gr=grupos[ti*LARG.length+li];
+      (lam.z<-0.05?gr.atras:gr.frente).push(lam);
+    }
+  }
+  function chao(){
+    const hor=proj(0,0,-900)[1];
+    const g=ctx.createLinearGradient(0,hor,0,H);
+    g.addColorStop(0,"#152d1c"); g.addColorStop(0.32,"#1d4325"); g.addColorStop(0.70,"#20492a"); g.addColorStop(1,"#22502d");
+    ctx.fillStyle=g; ctx.fillRect(0,hor,W,H-hor);
+    for(let i=-8;i<8;i+=2){
+      const a=proj(i*1.85,0,-60), b=proj(i*1.85+1.85,0,-60), c=proj(i*1.85+1.85,0,5.4), d=proj(i*1.85,0,5.4);
+      ctx.fillStyle="rgba(255,255,255,.022)";
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.lineTo(c[0],c[1]); ctx.lineTo(d[0],d[1]); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle="rgba(255,255,255,.16)"; ctx.lineWidth=Math.max(1,1.6*DPR);
+    const l0=proj(-11,0.005,0), l1=proj(11,0.005,0);
+    ctx.beginPath(); ctx.moveTo(l0[0],l0[1]); ctx.lineTo(l1[0],l1[1]); ctx.stroke();
+    const c=proj(0,0,-DEEP*0.45), r=(proj(HW+0.7,0,-DEEP*0.45)[0]-proj(-HW-0.7,0,-DEEP*0.45)[0])*0.5;
+    const sg=ctx.createRadialGradient(c[0],c[1],0,c[0],c[1],r);
+    sg.addColorStop(0,"rgba(0,0,0,.42)"); sg.addColorStop(0.6,"rgba(0,0,0,.18)"); sg.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.save(); ctx.translate(c[0],c[1]); ctx.scale(1,0.19); ctx.translate(-c[0],-c[1]);
+    ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(c[0],c[1],r,0,6.2832); ctx.fill(); ctx.restore();
+  }
+  function grama(t,campo){
+    ctx.lineCap="round";
+    for(const g of grupos){
+      const lista=g[campo]; if(!lista.length) continue;
+      ctx.strokeStyle=g.cor; ctx.lineWidth=g.lw; ctx.beginPath();
+      for(const b of lista){
+        const w=vento(b.x,b.z,t+b.fase*0.05)*o.vento/b.rig;
+        const dx=(WDX*w+b.pend)*b.h*0.85, dz=(WDZ*w+b.pend*0.4)*b.h*0.85, hy=b.h*(0.98-0.22*Math.abs(w));
+        const p0=proj(b.x,0,b.z), p1=proj(b.x+dx*0.30,hy*0.58,b.z+dz*0.30), p2=proj(b.x+dx,hy,b.z+dz);
+        ctx.moveTo(p0[0],p0[1]); ctx.quadraticCurveTo(p1[0],p1[1],p2[0],p2[1]);
+      }
+      ctx.stroke();
+    }
+  }
+  const NU=23, NV=13, SU=10, SV=9, gridFundo=[], gridLat=[[],[]];
+  function malha(t){
+    const amp=0.30*o.vento;
+    for(let j=0;j<NV;j++){
+      const v=j/(NV-1), pr=perfil(v);
+      for(let i=0;i<NU;i++){
+        const u=i/(NU-1), x=-HW+GW*u;
+        const bojo=Math.sin(Math.PI*u)*Math.sin(Math.PI*Math.min(v*1.12,1));
+        const w=vento(x,pr[0],t)*amp*bojo;
+        gridFundo[j*NU+i]=proj(x+w*0.30, pr[1]+w*0.22, pr[0]+w*0.92);
+      }
+    }
+    for(let s=0;s<2;s++){
+      const sx=s?HW:-HW;
+      for(let i=0;i<SU;i++){
+        const v=i/(SU-1), pr=perfil(v);
+        for(let j=0;j<SV;j++){
+          const f=j/(SV-1), y=pr[1]*f, bojo=Math.sin(Math.PI*v)*Math.sin(Math.PI*f);
+          const w=vento(sx,pr[0],t)*amp*bojo*0.8;
+          gridLat[s][i*SV+j]=proj(sx+w*(s?0.95:-0.95), y+w*0.10, pr[0]+w*0.20);
+        }
+      }
+    }
+  }
+  function tracar(pts){ ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]); ctx.stroke(); }
+  function rede(){
+    ctx.lineWidth=Math.max(0.6,0.95*DPR); ctx.lineJoin="round";
+    for(let s=0;s<2;s++){
+      ctx.strokeStyle=s?"rgba(226,240,232,.24)":"rgba(226,240,232,.32)";
+      for(let i=0;i<SU;i++){ const c=[]; for(let j=0;j<SV;j++) c.push(gridLat[s][i*SV+j]); tracar(c); }
+      for(let j=0;j<SV;j++){ const r=[]; for(let i=0;i<SU;i++) r.push(gridLat[s][i*SV+j]); tracar(r); }
+    }
+    ctx.strokeStyle="rgba(232,244,236,.38)";
+    for(let i=0;i<NU;i++){ const c=[]; for(let j=0;j<NV;j++) c.push(gridFundo[j*NU+i]); tracar(c); }
+    for(let j=0;j<NV;j++){ const r=[]; for(let i=0;i<NU;i++) r.push(gridFundo[j*NU+i]); tracar(r); }
+  }
+  function tubo(a,b,esp,cor,passos){
+    ctx.strokeStyle=cor; ctx.lineCap="round";
+    for(let k=0;k<passos;k++){
+      const t0=k/passos, t1=(k+1)/passos;
+      const p=proj(a[0]+(b[0]-a[0])*t0,a[1]+(b[1]-a[1])*t0,a[2]+(b[2]-a[2])*t0);
+      const q=proj(a[0]+(b[0]-a[0])*t1,a[1]+(b[1]-a[1])*t1,a[2]+(b[2]-a[2])*t1);
+      ctx.lineWidth=Math.max(1,esp*F/((p[2]+q[2])*0.5));
+      ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(q[0],q[1]); ctx.stroke();
+    }
+  }
+  function estrutura(){
+    tubo([-HW,0.02,-DEEP],[HW,0.02,-DEEP],0.042,"rgba(214,228,220,.45)",8);
+    tubo([-HW,0.02,0],[-HW,0.02,-DEEP],0.05,"rgba(214,228,220,.45)",5);
+    tubo([HW,0.02,0],[HW,0.02,-DEEP],0.05,"rgba(214,228,220,.45)",5);
+    tubo([-HW,0,0],[-HW,GH,0],0.12,"#eef4f0",3);
+    tubo([HW,0,0],[HW,GH,0],0.12,"#dfe8e3",3);
+    tubo([-HW,GH,0],[HW,GH,0],0.12,"#eef4f0",14);
+    tubo([-HW,GH+0.035,0],[HW,GH+0.035,0],0.03,"rgba(255,255,255,.55)",14);
+  }
+  function medir(){
+    const r=canvas.getBoundingClientRect();
+    DPR=Math.min(window.devicePixelRatio||1,2);
+    W=Math.max(2,Math.round(r.width*DPR)); H=Math.max(2,Math.round(r.height*DPR));
+    if(canvas.width!==W || canvas.height!==H){
+      canvas.width=W; canvas.height=H; F=1; CX=0; CY=0;
+      let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+      for(const q of [[-HW,0,0],[HW,0,0],[-HW,GH,0],[HW,GH,0],[-HW,0,-DEEP],[HW,0,-DEEP]]){
+        const s=proj(q[0],q[1],q[2]);
+        if(s[0]<x0)x0=s[0]; if(s[0]>x1)x1=s[0]; if(s[1]<y0)y0=s[1]; if(s[1]>y1)y1=s[1];
+      }
+      F=Math.min(W*0.84/(x1-x0), H*0.66/(y1-y0));
+      CX=W*0.5-(x0+x1)*0.5*F;
+      CY=H*0.12-y0*F;
+      semear();
+      if(o.aoRedimensionar) o.aoRedimensionar();
+    }
+  }
+  function desenhar(t){ medir(); ctx.clearRect(0,0,W,H); chao(); grama(t,"atras"); malha(t); rede(); estrutura(); grama(t,"frente"); }
+  let raf=0, t0=null, visivel=true;
+  const parado=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function frame(ms){ if(t0===null) t0=ms; desenhar((ms-t0)/1000); raf=visivel&&!parado?requestAnimationFrame(frame):0; }
+  if(parado) requestAnimationFrame(()=>desenhar(3.2));
+  else new IntersectionObserver(es=>{ visivel=es[0].isIntersecting; if(visivel&&!raf) raf=requestAnimationFrame(frame); },{threshold:0.01}).observe(canvas);
+  addEventListener("resize", ()=>{ if(!raf) requestAnimationFrame(()=>desenhar(3.2)); });
+  return {
+    boca(u,v){ const q=proj(-HW+GW*u, GH*v, 0); return [q[0]/DPR, q[1]/DPR]; },
+    caixa(){ return [W/DPR, H/DPR]; },
+    pronto(){ return W > 2; }
+  };
+}
+
+let GOL = null, PEN = null;
+function drawKicks(){
+  if(!GOL || !PEN || !GOL.pronto()) return;
+  const [w,h] = GOL.caixa(), svg = $("#goal-overlay");
+  svg.setAttribute("viewBox", `0 0 ${w.toFixed(1)} ${h.toFixed(1)}`);
+  const zoneCount = Array(9).fill(0);
+  PEN.kicks.forEach(k => { if(k.z !== undefined) zoneCount[k.z]++; });
+  const zmax = Math.max(1, ...zoneCount);
+  const quad = (u0,v0,u1,v1) => [GOL.boca(u0,v0),GOL.boca(u1,v0),GOL.boca(u1,v1),GOL.boca(u0,v1)].map(p => p.map(n => n.toFixed(1)).join(",")).join(" ");
+  const zones = zoneCount.map((n,z) => {
+    const u0 = (z%3)/3, v1 = 1 - Math.floor(z/3)/3, pts = quad(u0, v1-1/3, u0+1/3, v1);
+    return `${n ? `<polygon class="goal-zone-fill" points="${pts}" fill-opacity="${(n/zmax*.22).toFixed(2)}"/>` : ""}<polygon class="goal-zone" points="${pts}"/>`;
+  }).join("");
+  const label = {goal:"Gol", saved:"Defendido", out:"Para fora"};
+  const kicks = PEN.kicks.map(k => {
+    const [x,y] = GOL.boca(k.u, k.v), t = `<title>${label[k.type]}</title>`;
+    if(k.type === "goal") return `<circle class="kick-goal" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6">${t}</circle>`;
+    if(k.type === "saved") return `<g><circle class="kick-saved" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6">${t}</circle><path class="kick-saved-x" d="M${(x-2.6).toFixed(1)},${(y-2.6).toFixed(1)}l5.2,5.2m0,-5.2l-5.2,5.2"/></g>`;
+    return `<circle class="kick-out" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6">${t}</circle>`;
+  }).join("");
+  svg.innerHTML = zones + kicks;
+}
+
+function renderPenalties(p){
+  PEN = penaltyData(p);
+  if(!GOL) GOL = goleiraCard($("#goal-canvas"), {vento:.6, aoRedimensionar: () => requestAnimationFrame(drawKicks)});
+  drawKicks();
+  const d = PEN, conv = d.taken ? Math.round(d.scored/d.taken*100) : 0;
+  $("#pen-info").innerHTML = `
+    ${d.taken ? `<div class="legend"><span><i class="dot dot-goal"></i>Gol</span><span><i class="dot dot-saved"></i>Defendido</span><span><i class="dot dot-out"></i>Para fora</span></div>`
+              : `<p class="pen-empty">${p.pos === "GK" ? "Goleiro — sem cobranças na temporada." : "Nenhuma cobrança de pênalti na temporada."}</p>`}
+    <div class="tiles pen-tiles">
+      <div class="tile"><span class="label">Cobrados</span><span class="tile-value num">${d.taken}</span><span class="tile-note">na temporada</span></div>
+      <div class="tile"><span class="label">Convertidos</span><span class="tile-value green num">${d.scored}</span><span class="tile-note num">${conv}% de acerto</span></div>
+      <div class="tile"><span class="label">Perdidos</span><span class="tile-value red num">${d.taken - d.scored}</span><span class="tile-note num">${d.saved} def. · ${d.out} fora</span></div>
+    </div>`;
+}
+
+/* ========== RENDER: CARTA HOLOGRÁFICA ========== */
+/* origem: elementos/carta_holografica.html — mecanismo de mola/luz adaptado de
+   github.com/simeydotme/pokemon-cards-css (MIT). As variáveis de ponteiro são
+   estado de animação escrito em runtime (não estilo de layout). */
+const POS_ABBR = {GK:"GOL",CB:"ZAG",LB:"LE",RB:"LD",CM:"MC",LW:"PE",RW:"PD",FW:"ATA"};
+const FLAGS = {"Brasil":"🇧🇷","Uruguai":"🇺🇾","Colômbia":"🇨🇴","Equador":"🇪🇨","Espanha":"🇪🇸","Venezuela":"🇻🇪"};
+const clubInitials = c => { const w = c.split(/[\s-]+/).filter(x => x.length > 2 || /^[A-Z]{2,}$/.test(x)); return (w.length > 1 ? w.map(x => x[0]).join("").slice(0,3) : c.replace(/\s/g,"").slice(0,3)).toUpperCase(); };
+const ovr = p => Math.round(p.rating * 10);
+const tierOf = p => ovr(p) >= 85 ? "tier-gold" : ovr(p) >= 75 ? "tier-green" : "tier-silver";
+
+/* preenche qualquer carta (a principal ou as do painel de comparação) */
+function holoContent(p, card = $("#holo-card")){
+  card.className = `holo-card ${tierOf(p)} club-${slug(p.club)}`;
+  card.setAttribute("aria-label", `Carta de ${p.name}: OVR ${ovr(p)}`);
+  const s = [["GOL",p.g],["CHU",Math.round(p.shAcc)+"%"],["DES",p.tk],["COR",p.cl],["PAS",Math.round(p.pAcc)+"%"],["ASS",p.a]];
+  card.querySelector(".holo-inner").innerHTML = `
+    <div class="holo-top">
+      <div class="holo-ovr"><b class="num">${ovr(p)}</b><span>${POS_ABBR[p.pos]}</span><i>${FLAGS[p.nat] || ""}</i></div>
+      ${crest(p.club, "md")}
+    </div>
+    <div class="holo-portrait"><div class="holo-glow"></div>${photoKey(p)
+      ? `${avatar(p,"md")}<img class="holo-photo" src="${asset(`jogadores/card_${photoKey(p)}.png`)}" alt="">`
+      : avatar(p,"md")}</div>
+    <div class="holo-name"><b>${p.name}</b><span>${p.club} · ${POS_LABEL[p.pos]}</span></div>
+    <div class="holo-stats">${s.map(([k,v]) => `<div class="holo-stat"><b>${v}</b><span>${k}</span></div>`).join("")}</div>`;
+}
+
+const hround = (v, p = 3) => parseFloat(v.toFixed(p));
+const hclamp = (v, min = 0, max = 100) => Math.min(Math.max(v, min), max);
+const hadjust = (v, a, b, c, d) => hround(c + (d - c) * (v - a) / (b - a));
+function makeSpring(initial, settings, onFrame){
+  const keys = Object.keys(initial), value = {...initial}, target = {...initial}, vel = {};
+  keys.forEach(k => vel[k] = 0);
+  let cfg = {...settings}, raf = null;
+  function frame(){
+    let moving = false;
+    for(const k of keys){
+      const delta = target[k] - value[k];
+      vel[k] += cfg.stiffness * delta - cfg.damping * vel[k];
+      value[k] += vel[k];
+      if(Math.abs(delta) > .01 || Math.abs(vel[k]) > .01) moving = true;
+    }
+    onFrame(value);
+    raf = moving ? requestAnimationFrame(frame) : null;
+  }
+  return { set(next, nextCfg){ if(nextCfg) cfg = {...nextCfg}; Object.assign(target, next); if(raf === null) raf = requestAnimationFrame(frame); } };
+}
+const SPRING_INTERACT = {stiffness:.066, damping:.25}, SPRING_SNAP = {stiffness:.01, damping:.06}, SNAP_DELAY = 500;
+function holoCard(card){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const float = card.closest(".holo-float");
+  let snapTimer = null;
+  const spring = makeSpring({rx:0, ry:0, gx:50, gy:50, o:0, bx:50, by:50}, SPRING_INTERACT, v => {
+    const fc = hclamp(Math.sqrt((v.gy-50)**2 + (v.gx-50)**2) / 50, 0, 1);
+    const set = (k, val) => card.style.setProperty(k, val);
+    set("--pointer-x", `${hround(v.gx)}%`); set("--pointer-y", `${hround(v.gy)}%`);
+    set("--pointer-from-center", hround(fc)); set("--card-opacity", hclamp(hround(v.o), 0, 1));
+    set("--rotate-x", `${hround(v.rx)}deg`); set("--rotate-y", `${hround(v.ry)}deg`);
+    set("--background-x", `${hround(v.bx)}%`); set("--background-y", `${hround(v.by)}%`);
+  });
+  function interact(e){
+    clearTimeout(snapTimer); float.classList.add("interacting");
+    const pt = e.touches ? e.touches[0] : e, r = card.getBoundingClientRect();
+    const x = hclamp(hround(100/r.width*(pt.clientX - r.left))), y = hclamp(hround(100/r.height*(pt.clientY - r.top)));
+    spring.set({rx:hround(-(x-50)/3.5), ry:hround((y-50)/3.5), gx:x, gy:y, o:1, bx:hadjust(x,0,100,37,63), by:hadjust(y,0,100,33,67)}, SPRING_INTERACT);
+  }
+  function interactEnd(){
+    clearTimeout(snapTimer);
+    snapTimer = setTimeout(() => { float.classList.remove("interacting"); spring.set({rx:0, ry:0, gx:50, gy:50, o:0, bx:50, by:50}, SPRING_SNAP); }, SNAP_DELAY);
+  }
+  card.addEventListener("pointermove", interact);
+  card.addEventListener("pointerleave", interactEnd);
+  card.addEventListener("touchmove", interact, {passive:true});
+  card.addEventListener("touchend", interactEnd);
+  card.addEventListener("touchcancel", interactEnd);
+}
+
+/* vertical swap estritamente sequencial: a carta atual desce até sair da tela,
+   o conteúdo é trocado fora da vista, e só então a nova sobe — sem fade nem sobreposição */
+let holoShown = null, holoBusy = false, holoNext = null;
+async function swapHolo(p){
+  holoNext = p;
+  if(holoBusy) return;
+  holoBusy = true;
+  const slot = $("#holo-slot"), still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  while(holoNext){
+    const next = holoNext; holoNext = null;
+    if(next.id === holoShown) continue;
+    if(holoShown === null || still){ holoContent(next); holoShown = next.id; continue; }
+    const dist = Math.ceil(innerHeight - slot.getBoundingClientRect().top + 40);
+    const down = slot.animate([{transform:"translateY(0)"},{transform:`translateY(${dist}px)`}], {duration:420, easing:"cubic-bezier(.55,0,.85,.25)", fill:"forwards"});
+    await down.finished;
+    holoContent(next); holoShown = next.id;
+    const up = slot.animate([{transform:`translateY(${dist}px)`},{transform:"translateY(0)"}], {duration:560, easing:"cubic-bezier(.16,.84,.3,1)", fill:"forwards"});
+    down.cancel();
+    await up.finished;
+    up.cancel();
+  }
+  holoBusy = false;
+}
+
+/* ========== COMPARAÇÃO ENTRE JOGADORES ========== */
+/* fluxo: botão "Comparar" → modo de escolha no ranking → clique em outro jogador abre o painel.
+   O mesmo botão cancela a escolha ou encerra a comparação (os cards do dash voltam). */
+const cmp = { mode: "off", b: null };           /* off | picking | on */
+const CMP_ROWS = [
+  ["rating","Rating geral"],["apps","Jogos"],["g","Gols"],["a","Assistências"],["tk","Desarmes"],["cl","Cortes"],
+  ["sh","Chutes totais"],["sot","Chutes no alvo"],["shAcc","Precisão de chute"],
+  ["pt","Passes totais"],["pc","Passes certos"],["pAcc","Precisão de passe"]
+];
+const cmpFmt = (k, v) => k === "rating" ? fmt(v) : (k === "shAcc" || k === "pAcc") ? `${fmt(v)}%` : int(v);
+
+function compareRadar(a, b){
+  const W = 420, H = 300, cx = 210, cy = 152, R = 98, n = RADAR_AXES.length;
+  const ang = i => (-90 + i*360/n) * Math.PI/180;
+  const pt = (i, r) => [cx + r*Math.cos(ang(i)), cy + r*Math.sin(ang(i))];
+  const poly = r => RADAR_AXES.map((_,i) => pt(i,r).map(v => v.toFixed(1)).join(",")).join(" ");
+  const shape = p => RADAR_AXES.map(([,k],i) => pt(i, R*Math.min(1, p[k]/STAT_MAX[k])));
+  const pts = s => s.map(d => d.map(v => v.toFixed(1)).join(",")).join(" ");
+  const sa = shape(a), sb = shape(b);
+  const labels = RADAR_AXES.map(([l,k],i) => {
+    const [x,y] = pt(i, R+18), c = Math.cos(ang(i)), s = Math.sin(ang(i));
+    const anchor = c > .3 ? "start" : c < -.3 ? "end" : "middle";
+    const y0 = s < -.9 ? y - 16 : s > .9 ? y + 4 : y - 4;
+    const wa = a[k] > b[k], wb = b[k] > a[k];
+    return `<text class="radar-label" x="${x.toFixed(1)}" y="${y0.toFixed(1)}" text-anchor="${anchor}">${l}</text>
+      <text class="radar-value" x="${x.toFixed(1)}" y="${(y0+15).toFixed(1)}" text-anchor="${anchor}"><tspan class="cmp-t-a${wa?" win":""}">${int(a[k])}</tspan><tspan class="cmp-t-sep"> · </tspan><tspan class="cmp-t-b${wb?" win":""}">${int(b[k])}</tspan></text>`;
+  }).join("");
+  return `<svg class="cmp-radar" viewBox="0 0 ${W} ${H}" role="img" aria-label="Radares sobrepostos de ${a.name} e ${b.name}">
+    ${[.25,.5,.75,1].map(f => `<polygon class="radar-ring${f===1?" outer":""}" points="${poly(R*f)}"/>`).join("")}
+    ${RADAR_AXES.map((_,i) => { const [x,y] = pt(i,R); return `<line class="radar-spoke" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }).join("")}
+    <polygon class="cmp-area-a" points="${pts(sa)}"/>
+    <polygon class="cmp-area-b" points="${pts(sb)}"/>
+    ${sa.map(([x,y]) => `<circle class="cmp-dot-a" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`).join("")}
+    ${sb.map(([x,y]) => `<circle class="cmp-dot-b" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`).join("")}
+    ${labels}
+  </svg>`;
+}
+
+/* barra de duelo espelhada: A cresce para a esquerda a partir do centro, B para a direita */
+const duel = (va, vb) => { const m = Math.max(va, vb) || 1, wa = va/m*100, wb = vb/m*100;
+  return `<svg class="duel" viewBox="0 0 200 6" preserveAspectRatio="none" aria-hidden="true"><rect class="duel-track" width="200" height="6"/><rect class="duel-a" x="${(100-wa).toFixed(1)}" width="${wa.toFixed(1)}" height="6"/><rect class="duel-b" x="100" width="${wb.toFixed(1)}" height="6"/></svg>`; };
+
+function renderCompare(){
+  const a = BY_ID[state.selected], b = BY_ID[cmp.b];
+  let winsA = 0, winsB = 0;
+  const rows = CMP_ROWS.map(([k,l]) => {
+    const va = a[k], vb = b[k], wa = va > vb, wb = vb > va;
+    winsA += wa; winsB += wb;
+    return `<div class="cmp-row">
+      <span class="cmp-val cmp-val-a num${wa?" win":""}">${wa ? '<i class="cmp-up" aria-label="maior">▲</i>' : ""}${cmpFmt(k,va)}</span>
+      <div class="cmp-mid"><span class="label">${l}</span>${duel(va, vb)}</div>
+      <span class="cmp-val cmp-val-b num${wb?" win":""}">${cmpFmt(k,vb)}${wb ? '<i class="cmp-up" aria-label="maior">▲</i>' : ""}</span>
+    </div>`;
+  }).join("");
+  $("#cmp-panel").innerHTML = `
+    <div class="cmp-head">
+      <div class="cmp-who cmp-who-a">${avatar(a,"sm")}<div><b>${a.name}</b><span>${a.club}</span></div></div>
+      <span class="cmp-vs">VS</span>
+      <div class="cmp-who cmp-who-b"><div><b>${b.name}</b><span>${b.club}</span></div>${avatar(b,"sm")}</div>
+    </div>
+    <div class="cmp-score">
+      <span class="cmp-score-a num">${winsA}</span>
+      <span class="label">métricas vencidas</span>
+      <span class="cmp-score-b num">${winsB}</span>
+    </div>
+    ${compareRadar(a, b)}
+    <span class="radar-note">Radares sobrepostos · escala: maior valor da liga em cada atributo</span>
+    <div class="cmp-list">${rows}</div>`;
+}
+
+function setCompareMode(mode){
+  cmp.mode = mode;
+  const app = document.body;
+  app.classList.toggle("is-picking", mode === "picking");
+  app.classList.toggle("is-comparing", mode === "on");
+  const btn = $("#compare-btn");
+  btn.setAttribute("aria-pressed", mode !== "off");
+  $("#compare-btn-label").textContent = mode === "off" ? "Comparar" : mode === "picking" ? "Cancelar" : "Encerrar comparação";
+  $("#pick-hint").hidden = mode !== "picking";
+  if(mode === "picking") $("#pick-name").textContent = BY_ID[state.selected].name;
+  $("#compare").setAttribute("aria-hidden", mode !== "on");
+}
+
+async function openCompare(idB){
+  cmp.b = idB;
+  holoContent(BY_ID[state.selected], $("#cmp-card-a"));
+  holoContent(BY_ID[idB], $("#cmp-card-b"));
+  renderCompare();
+  $("#cmp-panel").scrollTop = 0;
+  setCompareMode("on");   /* entradas/saídas em slide ficam no CSS (.is-comparing) */
+}
+
+function toggleCompare(){
+  if(cmp.mode === "off") setCompareMode("picking");
+  else { setCompareMode("off"); cmp.b = null; }
+}
+
+/* ========== ORQUESTRAÇÃO E EVENTOS ========== */
+function select(id){
+  state.selected = id;
+  const p = BY_ID[id];
+  renderBio(p); renderPerf(p); renderHeatmap(p); renderPenalties(p); swapHolo(p);
+  markActive(); markMetric();
+}
+
+document.addEventListener("click", e => {
+  /* menu de clubes: clique fora fecha; clique dentro é tratado pelo próprio menu */
+  if(!$("#club-menu").hidden && !e.target.closest("#club-menu, #club-btn")) toggleClubMenu(false);
+  const metric = e.target.closest("[data-metric]");
+  if(metric){ setMetric(metric.dataset.metric); return; }
+  const posBtn = e.target.closest("[data-pos-filter]");
+  if(posBtn){
+    const g = posBtn.dataset.posFilter;
+    state.pos.has(g) ? state.pos.delete(g) : state.pos.add(g);
+    applyFilters(); return;
+  }
+  if(e.target.closest("#club-btn")){ toggleClubMenu(); return; }
+  if(e.target.closest("#club-clear")){ state.clubs.clear(); applyFilters(); return; }
+  if(e.target.closest("#filter-clear")){ state.pos.clear(); state.clubs.clear(); applyFilters(); return; }
+  if(e.target.closest("#compare-btn")){ toggleCompare(); return; }
+  const b = e.target.closest("[data-id]");
+  if(b){
+    const id = +b.dataset.id;
+    if(cmp.mode === "picking"){ if(id !== state.selected) openCompare(id); return; }   /* o próprio jogador não conta */
+    select(id);
+  }
+});
+/* teclado: Enter/Espaço nas métricas (são role=button) e Esc fecha o menu */
+document.addEventListener("keydown", e => {
+  if(e.key === "Escape" && !$("#club-menu").hidden){ toggleClubMenu(false); $("#club-btn").focus(); }
+  else if(e.key === "Escape" && cmp.mode !== "off"){ toggleCompare(); $("#compare-btn").focus(); }
+  const metric = e.target.closest?.("[data-metric]");
+  if(metric && (e.key === "Enter" || e.key === " ")){ e.preventDefault(); setMetric(metric.dataset.metric); }
+});
+$("#club-list").addEventListener("change", e => {
+  const i = e.target.closest("input[type=checkbox]");
+  if(!i) return;
+  i.checked ? state.clubs.add(i.value) : state.clubs.delete(i.value);
+  applyFilters();
+});
+addEventListener("resize", () => { if(!$("#club-menu").hidden) placeClubMenu(); });
+$("#search").addEventListener("input", e => {
+  state.query = e.target.value;
+  renderRanking();
+});
+
+holoCard($("#holo-card"));
+holoCard($("#cmp-card-a"));
+holoCard($("#cmp-card-b"));
+buildClubMenu();
+renderFilters();
+renderRanking();
+select(state.selected);
+</script>
+</body>
+</html>
